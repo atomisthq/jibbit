@@ -7,26 +7,21 @@
 * uses the [lein metajar packaging][lein-metajar] technique.  Automatically generates `Class-Path` entry in `Manifest.mf` entries in jar.
 * based on [lein-jib-build ideas][lein-jib-build] and code but just requires a `deps.edn` alias to configure. 
 
-### Configure deps.edn
+### Install jib tool
 
-```clj
-{
-  :aliases {
-    :package {
-      :deps {io.github.atomisthq/jibbit {:git/sha "8429e9b331f67e747ea9399e96b48be2ca3ea713"}}
-      :ns-default jibbit.core
-    } 
-  }
-}
+```sh
+clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "0.1.0"}' :as jib
 ```
 
 ### Create Image
 
 Build jar and package into a container image based on `gcr.io/distroless/java`.  It is mandatory to specify a namespace.  This
-becomes the entry point for the container image.
+becomes the entry point for the container image.  You must change directory to
+the project containing your `deps.edn` directory and then run the following
+command.
 
 ```sh
-$ clj -T:package build :main ${MAIN_NAMESPACE}
+$ clj -Tjib build :main ${MAIN_NAMESPACE}
 ```
 
 This will build the container image to a file named `app.tar`.  You can inspect
@@ -54,7 +49,7 @@ manifest.json
 This does require a local Docker install!  However, it does not use Docker for building.  It just makes the image available for running.
 
 ```sh
-$ clj -T:package build :main ${MAIN_NAMESPACE} :docker namespace/image_name
+$ clj -Tjib build :main ${MAIN_NAMESPACE} :docker namespace/image_name
 ```
 
 If this command is successful, you'll be able to run the container locally with this command.
@@ -74,16 +69,16 @@ Create an edn file somewhere with your DockerHub username and an access token.
 
 Your username must have write access to the namespace in the command below.  Pass the location of the edn file you created using the `:target-creds` keyword.
 
-```
-$ clj -T:package build :main ${MAIN_NAMESPACE} :repository namespace/image_name :target-creds creds.edn
+```sh
+$ clj -Tjib build :main ${MAIN_NAMESPACE} :repository namespace/image_name :target-creds creds.edn
 ```
 
 ### Push to GCR
 
 If you have `gcloud` installed then run `gcloud auth login` to login to your account.
 
-```
-$ clj -T:package build :main ${MAIN_NAMESPACE} :repository gcr.io/${YOUR_PROJECT_ID}/image_name :target-authorizer jibbit.gcloud/authorizer
+```bash
+$ clj -Tjib build :main ${MAIN_NAMESPACE} :repository gcr.io/${YOUR_PROJECT_ID}/image_name :target-authorizer jibbit.gcloud/authorizer
 ```
 
 The value of the `:target-authorizer` is a [function](https://github.com/atomisthq/jibbit/blob/main/src/jibbit/gcloud.clj#L6) that will use `gcloud auth print-access-token` to create an access token for gcr. 
@@ -96,4 +91,4 @@ TODO
 [lein-jib-build]: https://github.com/vehvis/lein-jib-build
 [lein-metajar]: https://github.com/orb/lein-metajar
 [jib]: https://github.com/GoogleContainerTools/jib
-
+[tools.build]: https://github.com/clojure/tools.build
