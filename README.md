@@ -13,7 +13,7 @@
 {
   :aliases {
     :package {
-      :deps {io.github.atomist/jibbit {:local/root "/Users/slim/atomist/jibbit"}}
+      :deps {io.github.atomisthq/jibbit {:git/tag "0.1.0"}}
       :ns-default jibbit.core
     } 
   }
@@ -86,7 +86,7 @@ If you have `gcloud` installed then run `gcloud auth login` to login to your acc
 $ clj -T:package build :main ${MAIN_NAMESPACE} :repository gcr.io/${YOUR_PROJECT_ID}/image_name :target-authorizer jibbit.gcloud/authorizer
 ```
 
-The value of the `:target-authorizer` is a function that will use `gcloud auth print-access-token` to create an access token for gcr. 
+The value of the `:target-authorizer` is a [function](https://github.com/atomisthq/jibbit/blob/main/src/jibbit/gcloud.clj#L6) that will use `gcloud auth print-access-token` to create an access token for gcr. 
 
 ### Push to ECR
 
