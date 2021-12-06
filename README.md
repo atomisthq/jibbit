@@ -13,7 +13,7 @@
 {
   :aliases {
     :package {
-      :deps {io.github.atomisthq/jibbit {:git/tag "0.1.0"}}
+      :deps {io.github.atomisthq/jibbit {:git/sha "8429e9b331f67e747ea9399e96b48be2ca3ea713"}}
       :ns-default jibbit.core
     } 
   }
