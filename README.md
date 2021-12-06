@@ -1,17 +1,23 @@
 ## Build Clojure app into Container Image using jib (docker-less build)
 
 * based on [jib][jib]
-* does not use `Docker` for building.  A local Docker install is not required if pushing only to remote registries
+* does not use `Docker` for building.  A local Docker install is not required
+  if pushing only to remote registries
 * optimized for repeatable image builds
-* produces images that work well with OSS vulnerability scanners.  Scanners will detect OS, Java, and OSS dependency vulnerabilities.
-* uses the [lein metajar packaging][lein-metajar] technique.  Automatically generates `Class-Path` entry in `Manifest.mf` entries in jar.
-* based on [lein-jib-build ideas][lein-jib-build] and code but just requires a `deps.edn` alias to configure. 
+* produces images that work well with OSS vulnerability scanners.  Scanners
+  will detect OS, Java, and OSS dependency vulnerabilities.
+* uses the [lein metajar packaging][lein-metajar] technique.  Automatically
+  generates `Class-Path` entry in `Manifest.mf` entries in jar.
+* based on [lein-jib-build][lein-jib-build] ideas and code but installed as a
+  [clj Tool][tools-usage].
 
-### Install jib tool
+### Install Tool
 
 ```sh
-clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "0.1.0"}' :as jib
+clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "v0.1.0"}' :as jib
 ```
+
+You can now build clojure projects into containers using `clj -Tjib build`.  Explicit examples of using this are shown below.
 
 ### Create Image
 
@@ -77,11 +83,14 @@ $ clj -Tjib build :main ${MAIN_NAMESPACE} :repository namespace/image_name :targ
 
 If you have `gcloud` installed then run `gcloud auth login` to login to your account.
 
-```bash
+```sh
 $ clj -Tjib build :main ${MAIN_NAMESPACE} :repository gcr.io/${YOUR_PROJECT_ID}/image_name :target-authorizer jibbit.gcloud/authorizer
 ```
 
-The value of the `:target-authorizer` is a [function](https://github.com/atomisthq/jibbit/blob/main/src/jibbit/gcloud.clj#L6) that will use `gcloud auth print-access-token` to create an access token for gcr. 
+The value of the `:target-authorizer` is a
+[function](https://github.com/atomisthq/jibbit/blob/main/src/jibbit/gcloud.clj#L6)
+that will use `gcloud auth print-access-token` to create an access token for
+gcr. 
 
 ### Push to ECR
 
@@ -92,3 +101,4 @@ TODO
 [lein-metajar]: https://github.com/orb/lein-metajar
 [jib]: https://github.com/GoogleContainerTools/jib
 [tools.build]: https://github.com/clojure/tools.build
+[tools-usage]: https://clojure.org/reference/deps_and_cli#_using_named_tools
