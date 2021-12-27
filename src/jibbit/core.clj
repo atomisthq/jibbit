@@ -33,6 +33,7 @@
                 ;; user-defined
                 user user
                 ;; gcr.io/distroless/java ships with a nobody user
+                (.startsWith (:image-name base-image) "openjdk") "nobody"
                 (= "gcr.io/distroless/java" (:image-name base-image)) "65532")))
 
 (defn jib-build
@@ -44,14 +45,18 @@
                      :type :registry}
          target-image {:image-name "app.tar"
                        :type :tar}
-         git-url "https://github.com/org/repo"}
+         git-url (or
+                  (b/git-process {:dir b/*project-root* :git-args ["ls-remote" "--get-url"]})
+                  (do
+                    (println "could not discover git remote")
+                    "https://github.com/unknown/unknown"))}
     :as c}]
   (let [standalone-jar (format "%s/target/%s" project-dir jar-name)]
     (println (format "Building container with %s on base image %s" standalone-jar (:image-name base-image)))
     (-> (Jib/from (configure-image base-image {:name "clj-build-test"}))
         (.addLabel "org.opencontainers.image.revision" (clojure.string/trim (:out (sh/sh "git" "rev-parse" "HEAD"))))
         (.addLabel "org.opencontainers.image.source" git-url)
-        (.addLabel "com.atomist.containers.image.build" "clj -T:jibbit build")
+        (.addLabel "com.atomist.containers.image.build" "clj -Tjib build")
         ;; first layer has all the dependent jars
         (.addLayer (apply into-list (->> (file-seq (io/file (format "%s/target/lib" project-dir)))
                                          (filter #(.isFile %))

@@ -1,8 +1,7 @@
 ## Build Clojure app into Container Image using jib (docker-less build)
 
 * based on [jib][jib]
-* does not use `Docker` for building.  A local Docker install is not required
-  if pushing only to remote registries
+* does not use `Docker` for building or pushing.  A local Docker install is not required.
 * optimized for repeatable image builds
 * produces images that work well with OSS vulnerability scanners.  Scanners
   will detect OS, Java, and OSS dependency vulnerabilities.
@@ -10,19 +9,23 @@
   generates `Class-Path` entry in `Manifest.mf` entries in jar.
 * based on [lein-jib-build][lein-jib-build] ideas and code but installed as a
   [clj Tool][tools-usage].
+* automatically adds `org.opencontainers.image` LABELS to the target image
 
 ### Install Tool
 
+This can be installed as a [named tool][tools-usage].
+
 ```sh
-clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "v0.1.1"}' :as jib
+clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "v0.1.2"}' :as jib
 ```
 
-You can now build clojure projects into containers using `clj -Tjib build`.  Explicit examples are shown below.
+You can now build clojure projects into containers using `clj -Tjib build`.
 
 ### Create Image
 
-Build jar and package into a container image based on `gcr.io/distroless/java`.  It is mandatory to specify a namespace.  This
-becomes the entry point for the container image.  You must change directory to
+Build jar and package into a container image based on `gcr.io/distroless/java`.
+It is mandatory to specify a `main` namespace.  This
+becomes the entry point for the container image.  Change directory to
 the project containing your `deps.edn` directory and then run the following
 command.
 
@@ -64,7 +67,7 @@ The `:main` key is mandatory. Non-default values of `:base-image` and `:target-i
 Command substitution will also work if you're using a bourne style shell.
 
 ```sh
-clj -Tjib build :config $(< jib.edn)
+clj -Tjib build :config "$(< jib.edn)"
 ```
 
 ## Push target Images
@@ -73,7 +76,7 @@ clj -Tjib build :config $(< jib.edn)
 
 This does require a local Docker install!  However, it does not use Docker for building.  It makes the image available for running in a local docker runtime.
 
-User a `jibbit.edn` where the `:target-image` is of type docker.
+Use a `jib.edn` where the `:target-image` is of type docker.
 
 ```edn
 {:main "my-namespace.core"
@@ -81,30 +84,21 @@ User a `jibbit.edn` where the `:target-image` is of type docker.
                 :type :docker}}
 ```
 
-If running `clj -Tjib build` is successful, you'll be able to run the container locally with this command.
+If running `clj -Tjib build` was successful, you'll be able to run the container locally with this command.
 
 ```sh
 $ docker run --rm namespace/image_name
 ```
 
-### Push to DockerHub
+### Push to a remote registry
 
-Your user must have write access to the docker namespace called `my-namespace`.
-
-```edn
-{:main "my-namespace.core"
- :target-image {:image-name "my-namespace/image_name"
-                :type :registry
-                :username "my-user"
-                :password "my-password"}}
-```
-
-This does not rely on a local docker install to push.  [Jib][jib] has its own docker push client.
+None of the configurations below rely on a local docker client.  This means that you can build
+and push from environments that do not have a running docker daemon.
 
 ### Push to GCR
 
 If you have `gcloud` installed, and you have already run `gcloud auth login` to login to your account, then 
-you the jib tool can fetch credentials from you currently login.
+you the jib tool can fetch credentials from your current login.
 
 ```edn
 {:main "my-namespace.core"
@@ -115,12 +109,11 @@ you the jib tool can fetch credentials from you currently login.
 
 The value of the `:target-authorizer` is a
 [function](https://github.com/atomisthq/jibbit/blob/main/src/jibbit/gcloud.clj#L6)
-that will use `gcloud auth print-access-token` to create the access token for
-gcr. 
+that will use `gcloud auth print-access-token` to create the access token.
 
 ### Push to ECR
 
-There are a few ways to authenticate to ECR.  If you have a local named aws profile (e.g. `sts`) then use the `:profile` type shown below.  This will call the same api
+There are a few ways to authenticate to ECR.  If you have a local aws profile then use the `:profile` type shown below.  This will call the same api
 that would be called by the equivalent `aws ecr get-login-password --region us-west-1 --profile sts`.
 
 ```edn
@@ -133,9 +126,88 @@ that would be called by the equivalent `aws ecr get-login-password --region us-w
                                     :region "us-west-1"}}}}
 ```
 
+### Push to DockerHub
+
+Your user must have write access to the docker namespace.  You can set credentials using `:username` and `:password` keys.
+
+```edn
+{:main "my-namespace.core"
+ :target-image {:image-name "my-namespace/image_name"
+                :type :registry
+                :username "<my-docker-user>"
+                :password "<my-docker-personal-access-token>"}}
+```
+
+However, if you want to check in your configuration and still read the credentials from disk, then extract the credentials using an 
+[authorizer function](https://github.com/atomisthq/jibbit/blob/main/src/jibbit/creds.clj#L14).
+
+```edn
+{:main "my-namespace.core"
+ :target-image {:image-name "my-namespace/image_name"
+                :type :registry
+                :authorizer {:fn jibbit.creds/load-edn
+                             :args {:local ".creds.edn"}}}}
+```
+
+Your `.creds.edn` file should be an edn map with two keys (`:username` and `:password`).
+
+```edn
+{:username "<my-docker-user>" :password "<my-docker-personall-access-token>"}
+```
+
+## Using other base images
+
+The examples above all built on top of `gcr.io/distroless/java`.  You can also use private images from authenticated registries, or other public images. For example, choose `openjdk:11-slim-buster` as the base image using this configuration.
+
+```edn
+{:main "my-namespace.core"
+ :user "nobody"
+ :base-image {:image-name "openjdk:11-slim-buster"
+              :type :registry}}
+```
+
+All of the `:authorizer` configs shown above can be used in the `:base-image` maps.  Add an `:authorizer` if you are building on a base image that is stored in a private registry.
+
+## Setting a non-root user
+
+By default, this tool tries to set a non-root user when we recognize a base image that comes equipped with a good alternative.  For example, the `openjdk` images have a "nobody" user and the `gcr.io/distroless/java` images have a user with id `65532`.  This can be over-ridden with the `:user` key.  In general, it's a good practice to verify that your images are not required to run as the root user.
+
+If you're using an unrecognized base image, your image will default to run as root.  Add a `:user` key if your image supports running as non-root.
+
+```edn
+{:main "my-namespace.core"
+ :user "nobody"}
+```
+
+## org.opencontainers.image LABELS
+
+This tool automatically adds [opencontainer metadata][opencontainers] LABELs to
+the target image. It is a good idea to run this tool only when the working
+directory is clean. 
+
+```bash
+if [ -z "$(git status --porcelain)" ]; then
+  clj -Tjib build
+else
+  echo "Don't jib with uncommitted changes."
+  exit -1
+fi
+```
+
+By adhering to this rule, the metadata in the Image can be used to trace a running container back to its source code.
+
+Labels that are automatically set in each target image are shown below.
+
+| LABEL | value |
+| :---- | :---- |
+| org.opencontainers.image.revision | set to the commit SHA |
+| org.opencontainers.image.source   | set to the remote git url |
+| com.atomist.containers.image.build | jib config used to reproduce this image |
+
 [gene-kim-gist]: https://gist.github.com/realgenekim/fdcad45286d065cc559cd75a8f946ad4#file-jib-build-clj-L45
 [lein-jib-build]: https://github.com/vehvis/lein-jib-build
 [lein-metajar]: https://github.com/orb/lein-metajar
 [jib]: https://github.com/GoogleContainerTools/jib
 [tools.build]: https://github.com/clojure/tools.build
 [tools-usage]: https://clojure.org/reference/deps_and_cli#_using_named_tools
+[opencontainers]: https://github.com/opencontainers/image-spec/blob/main/annotations.md
