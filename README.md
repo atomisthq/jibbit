@@ -16,7 +16,7 @@
 This can be installed as a [named tool][tools-usage].
 
 ```sh
-clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "v0.1.2"}' :as jib
+clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "v0.1.3"}' :as jib
 ```
 
 You can now build clojure projects into containers using `clj -Tjib build`.
@@ -90,6 +90,8 @@ If running `clj -Tjib build` was successful, you'll be able to run the container
 $ docker run --rm namespace/image_name
 ```
 
+Since there was no tag specified, this will default to `latest`.
+
 ### Push to a remote registry
 
 None of the configurations below rely on a local docker client.  This means that you can build
@@ -98,7 +100,7 @@ and push from environments that do not have a running docker daemon.
 ### Push to GCR
 
 If you have `gcloud` installed, and you have already run `gcloud auth login` to login to your account, then 
-you the jib tool can fetch credentials from your current login.
+the jib tool will fetch credentials from your current login.
 
 ```edn
 {:main "my-namespace.core"
@@ -107,9 +109,14 @@ you the jib tool can fetch credentials from your current login.
                 :authorizer {:fn jibbit.gcloud/authorizer}}}
 ```
 
-The value of the `:target-authorizer` is a
+The `authorizer` is a 
 [function](https://github.com/atomisthq/jibbit/blob/main/src/jibbit/gcloud.clj#L6)
 that will use `gcloud auth print-access-token` to create the access token.
+
+You can reference your own own custom authorizers.  Note that this is running
+as a [named tool][tools-usage], so the deps of your projects are not loaded in
+the current runtime.  You can, however, load namespaces from the root of your
+project (eg from `"."`).
 
 ### Push to ECR
 
@@ -155,6 +162,33 @@ Your `.creds.edn` file should be an edn map with two keys (`:username` and `:pas
 {:username "<my-docker-user>" :password "<my-docker-personall-access-token>"}
 ```
 
+## Tagging
+
+In most of the above configurations, we did not include a tag in the in `:image-name`.  You can add a tag directly to the config.
+
+```edn
+{:main "my-namespace.core"
+ :target-image {:image-name "my-namespace/image_name:v1"
+                :type :registry
+                :authorizer {:fn jibbit.creds/load-edn
+                             :args {:local ".creds.edn"}}}}
+```
+
+However, tags are usually extracted from some other project metadata, like a
+git tag on the HEAD commit.  Add a `:tagger` to the `:target-image` map to
+define the next tag.  The `jibbit.tagger/tag` function will try to use a tag on the
+HEAD commit, or just the HEAD commit `SHA` if there is no tag.  It will throw
+an exception if the current working copy is not clean. 
+
+```edn
+{:main "my-namespace.core"
+ :target-image {:image-name "my-namespace/image_name"
+                :type :registry
+                :tagger {:fn jibbit.tagger/tag}
+                :authorizer {:fn jibbit.creds/load-edn
+                             :args {:local ".creds.edn"}}}}
+```
+
 ## Using other base images
 
 The examples above all built on top of `gcr.io/distroless/java`.  You can also use private images from authenticated registries, or other public images. For example, choose `openjdk:11-slim-buster` as the base image using this configuration.
@@ -182,7 +216,7 @@ If you're using an unrecognized base image, your image will default to run as ro
 ## org.opencontainers.image LABELS
 
 This tool automatically adds [opencontainer metadata][opencontainers] LABELs to
-the target image. It is a good idea to run this tool only when the working
+the target image. It is a good idea to run jib only when the working
 directory is clean. 
 
 ```bash
@@ -211,3 +245,4 @@ Labels that are automatically set in each target image are shown below.
 [tools.build]: https://github.com/clojure/tools.build
 [tools-usage]: https://clojure.org/reference/deps_and_cli#_using_named_tools
 [opencontainers]: https://github.com/opencontainers/image-spec/blob/main/annotations.md
+

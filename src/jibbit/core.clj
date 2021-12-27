@@ -36,6 +36,16 @@
                 (.startsWith (:image-name base-image) "openjdk") "nobody"
                 (= "gcr.io/distroless/java" (:image-name base-image)) "65532")))
 
+(defn add-tags [{:keys [tagger] :as target-image}]
+  (if tagger
+    (update target-image :image-name (fn [image-name]
+                                       (require [(symbol (namespace (:fn tagger)))])
+                                       (let [tag (eval `(~(:fn tagger) (assoc ~(:args tagger) :image-name ~image-name)))]
+                                         (println "use tag " tag)
+                                         (let [[_ n _] (re-find #"(.*):(.*)" image-name)]
+                                           (format "%s:%s" (or n image-name) tag)))))
+    target-image))
+
 (defn jib-build
   "It places the jar in the container (or else it gets the hose again)."
   [{:keys [git-url base-image target-image project-dir jar-name]
@@ -74,7 +84,9 @@
         #_(.setProgramArguments (into-list "server-0.1.1-standalone.jar"))
         (set-user (assoc c :base-image base-image))
         (.setEntrypoint (apply into-list ["java" "-jar" jar-name]))
-        (.containerize (-> (Containerizer/to (configure-image target-image {:name "clj-jib-test"}))
+        (.containerize (-> (Containerizer/to (-> target-image
+                                                 (add-tags)
+                                                 (configure-image {:name "clj-jib-test"})))
                            (.setToolName "clojure jib builder")
                            (.setToolVersion "0.1.0"))))))
 
