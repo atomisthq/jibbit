@@ -28,10 +28,12 @@
        (map #(str "lib/" (.getName %)))
        (clojure.string/join " ")))
 
-(defn sym->str [s]
-  (if (namespace s)
-    (format "%s/%s" (namespace s) (name s))
-    (name s)))
+(defn set-user [x {:keys [user base-image]}]
+  (.setUser x (cond
+                ;; user-defined
+                user user
+                ;; gcr.io/distroless/java ships with a nobody user
+                (= "gcr.io/distroless/java" (:image-name base-image)) "65532")))
 
 (defn jib-build
   "It places the jar in the container (or else it gets the hose again)."
@@ -42,9 +44,10 @@
                      :type :registry}
          target-image {:image-name "app.tar"
                        :type :tar}
-         git-url "https://github.com/org/repo"}}]
+         git-url "https://github.com/org/repo"}
+    :as c}]
   (let [standalone-jar (format "%s/target/%s" project-dir jar-name)]
-    (println "Building container upon" (:image-name base-image) "with" standalone-jar)
+    (println (format "Building container with %s on base image %s" standalone-jar (:image-name base-image)))
     (-> (Jib/from (configure-image base-image {:name "clj-build-test"}))
         (.addLabel "org.opencontainers.image.revision" (clojure.string/trim (:out (sh/sh "git" "rev-parse" "HEAD"))))
         (.addLabel "org.opencontainers.image.source" git-url)
@@ -64,23 +67,31 @@
                          (.build)))
         ;; TODO this might add too much confusion - can we keep this simple and just not add this?
         #_(.setProgramArguments (into-list "server-0.1.1-standalone.jar"))
+        (set-user (assoc c :base-image base-image))
         (.setEntrypoint (apply into-list ["java" "-jar" jar-name]))
         (.containerize (-> (Containerizer/to (configure-image target-image {:name "clj-jib-test"}))
                            (.setToolName "clojure jib builder")
                            (.setToolVersion "0.1.0"))))))
 
+(def default-jibbit-config-file "jib.edn")
+
+(defn load-config [dir]
+  (when-let [edn-file (if-let [e (System/getenv "JIB_CONFIG")]
+                        (io/file e)
+                        (io/file dir default-jibbit-config-file))]
+    (read-string (slurp edn-file))))
+
 (defn build
   "clean, compile, metajar, and then jib"
-  [{:keys [project-dir jar-name main docker repository target-creds target-authorizer]
-    :or {jar-name "app.jar"}
-    :as config}]
+  [{:keys [project-dir config]}]
   (when project-dir
     (b/set-project-root! project-dir))
   (b/create-basis {:project "deps.edn"})
-  (let [class-dir "target/classes"
+  (let [jib-config (or config (load-config (if project-dir (io/file project-dir) (io/file "."))))
+        class-dir "target/classes"
         meta-lib-dir "target/lib"
         basis (b/create-basis {:project "deps.edn"})]
-    (when (not main) (throw (ex-info "specify :main" {})))
+    (when (not (:main jib-config)) (throw (ex-info "must specify :main config" {})))
     #_(b/delete {:path class-dir})
     (println ".. compile-clj")
     (b/compile-clj {:src-dirs (->> (if-let [src-paths (:paths basis)]
@@ -92,36 +103,21 @@
     (println "... jar")
     (b/jar (merge
             {:class-dir class-dir
-             :jar-file (format "target/%s" jar-name)
+             :jar-file (format "target/%s" (or (:jar-name config) "app.jar"))
              :manifest {"Class-Path" (manifest-class-path (:classpath-roots basis))}}
-            (when main
-              {:main main})))
+            jib-config))
 
     (doseq [s (:classpath-roots basis)]
       (b/copy-file {:src s
                     :target (format "%s/%s/%s" (or project-dir ".") meta-lib-dir (.getName (io/file s)))}))
-    (jib-build
-     (merge config
-            (cond
-              docker
-              {:target-image {:type :docker
-                              :image-name (sym->str docker)}}
-              repository
-              {:target-image (merge
-                              {:type :registry
-                               :image-name (sym->str repository)}
-                              (when target-creds
-                                (-> (slurp (sym->str target-creds))
-                                    (read-string)))
-                              (when target-authorizer
-                                {:authorizer {:fn target-authorizer}}))})))))
+    (jib-build jib-config)))
 
 (comment
   (build {:project-dir "/Users/slim/repo/google-cloud"
-          :main "main"
-          :git-url "https://github.com"
-          :base-image {:image-name "gcr.io/distroless/java"
-                       :type :registry}
-          :target-image {:image-name "gcr.io/personalsdm-216019/distroless-jib-clojure"
-                         :authorizer {:fn 'jibbit.gcloud/authorizer}
-                         :type :docker}}))
+          :config {:main "main"
+                   :git-url "https://github.com"
+                   :base-image {:image-name "gcr.io/distroless/java"
+                                :type :registry}
+                   :target-image {:image-name "gcr.io/personalsdm-216019/distroless-jib-clojure"
+                                  :authorizer {:fn 'jibbit.gcloud/authorizer}
+                                  :type :docker}}}))

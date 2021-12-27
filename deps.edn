@@ -3,4 +3,5 @@
                :ns-aliases {jib jibbit.core}}
  :deps {io.github.clojure/tools.build {:git/tag "v0.6.8" :git/sha "d79ae84"}
         com.google.cloud.tools/jib-core {:mvn/version "0.20.0"}
-        io.github.slimslenderslacks/lein-jib-build {:git/sha "78a231ce8b6373e485d068a9171d85428c28334a"}}}
+        io.github.slimslenderslacks/lein-jib-build {:git/sha "22ee6219d3f2d81c9e10e0e07175d0cd30084227"}}}
+
