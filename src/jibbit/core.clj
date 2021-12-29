@@ -13,13 +13,15 @@
                                    ImageReference 
                                    CredentialRetriever 
                                    Credential
-                                   LayerConfiguration)
+                                   LayerConfiguration
+                                   LogEvent)
    (com.google.cloud.tools.jib.api.buildplan AbsoluteUnixPath)
    (com.google.cloud.tools.jib.frontend
     CredentialRetrieverFactory)
    (java.nio.file Paths)
    (java.io File)
-   (java.util List ArrayList Optional)))
+   (java.util List ArrayList Optional)
+   (java.util.function Consumer)))
 
 (defn manifest-class-path [meta-lib-jars]
   (->> meta-lib-jars
@@ -41,13 +43,16 @@
     (update target-image :image-name (fn [image-name]
                                        (require [(symbol (namespace (:fn tagger)))])
                                        (let [tag (eval `(~(:fn tagger) (assoc ~(:args tagger) :image-name ~image-name)))]
-                                         (println "use tag " tag)
                                          (let [[_ n _] (re-find #"(.*):(.*)" image-name)]
                                            (format "%s:%s" (or n image-name) tag)))))
     target-image))
 
 (defn jib-build
-  "It places the jar in the container (or else it gets the hose again)."
+  "Containerize using jib
+     - dependent jar layer:  copy all dependent jars from target/lib into WORKING_DIR/lib
+     - app jar layer:  copy target/app.jar into WORKING_DIR
+     - try to set a non-root user
+     - add org.opencontainer LABEL image metadata from current HEAD commit"
   [{:keys [git-url base-image target-image project-dir jar-name]
     :or {project-dir (.getPath (io/file (System/getenv "PWD")))
          jar-name "app.jar"
@@ -62,7 +67,6 @@
                     "https://github.com/unknown/unknown"))}
     :as c}]
   (let [standalone-jar (format "%s/target/%s" project-dir jar-name)]
-    (println (format "Building container with %s on base image %s" standalone-jar (:image-name base-image)))
     (-> (Jib/from (configure-image base-image {:name "clj-build-test"}))
         (.addLabel "org.opencontainers.image.revision" (clojure.string/trim (:out (sh/sh "git" "rev-parse" "HEAD"))))
         (.addLabel "org.opencontainers.image.source" git-url)
@@ -88,11 +92,17 @@
                                                  (add-tags)
                                                  (configure-image {:name "clj-jib-test"})))
                            (.setToolName "clojure jib builder")
-                           (.setToolVersion "0.1.0"))))))
+                           (.setToolVersion "0.1.0")
+                           (.addEventHandler
+                            LogEvent
+                            (reify Consumer
+                              (accept [this event] (printf "%-10s%s\n" (.getLevel event) (.getMessage event))))))))))
 
 (def default-jibbit-config-file "jib.edn")
 
-(defn load-config [dir]
+(defn load-config 
+  "load jib config from either JIB_CONFIG env variable, or from a jib.edn file in the project-dir"
+  [dir]
   (when-let [edn-file (if-let [e (System/getenv "JIB_CONFIG")]
                         (io/file e)
                         (io/file dir default-jibbit-config-file))]
@@ -110,20 +120,20 @@
         basis (b/create-basis {:project "deps.edn"})]
     (when (not (:main jib-config)) (throw (ex-info "must specify :main config" {})))
     #_(b/delete {:path class-dir})
-    (println ".. compile-clj")
+    (println "... clojure.tools.build.api/compile-clj")
     (b/compile-clj {:src-dirs (->> (if-let [src-paths (:paths basis)]
                                      (if (seq src-paths) src-paths ["src"])
                                      ["src"])
                                    (into []))
                     :class-dir class-dir
                     :basis basis})
-    (println "... jar")
+    (println "... clojure.tools.build.api/jar")
     (b/jar (merge
             {:class-dir class-dir
              :jar-file (format "target/%s" (or (:jar-name config) "app.jar"))
              :manifest {"Class-Path" (manifest-class-path (:classpath-roots basis))}}
             jib-config))
-
+    (println "... run jib")
     (doseq [s (:classpath-roots basis)]
       (b/copy-file {:src s
                     :target (format "%s/%s/%s" (or project-dir ".") meta-lib-dir (.getName (io/file s)))}))

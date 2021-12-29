@@ -8,5 +8,5 @@
     (if (b/git-process {:dir b/*project-root* :git-args ["status" "--porcelain"]})
       (throw (ex-info "jibbit.tagger/tag requires a clean working directory" {}))
       (let [sha (b/git-process {:dir b/*project-root* :git-args ["rev-parse" "HEAD"]})
-            tag (b/git-process {:dir b/*project-root* :git-args ["describe" "--exact-match"]})]
+            tag (b/git-process {:dir b/*project-root* :git-args ["describe" "--tags" "--exact-match"]})]
         (or tag sha)))))
