@@ -2,6 +2,7 @@
   (:require [clojure.tools.build.api :as b]
             [clojure.string]
             [clojure.java.io :as io]
+            [clojure.edn :as edn]
             [clojure.java.shell :as sh]
             [leiningen.jib-build :refer [configure-image get-path into-list]])
   (:import
@@ -87,7 +88,7 @@
         ;; TODO this might add too much confusion - can we keep this simple and just not add this?
         #_(.setProgramArguments (into-list "server-0.1.1-standalone.jar"))
         (set-user (assoc c :base-image base-image))
-        (.setEntrypoint (apply into-list ["java" "-jar" jar-name]))
+        (.setEntrypoint (apply into-list ["java" "-Dclojure.main.report=stderr" "-Dfile.encoding=UTF-8" "-jar" jar-name ]))
         (.containerize (-> (Containerizer/to (-> target-image
                                                  (add-tags)
                                                  (configure-image {:name "clj-jib-test"})))
@@ -106,7 +107,7 @@
   (when-let [edn-file (if-let [e (System/getenv "JIB_CONFIG")]
                         (io/file e)
                         (io/file dir default-jibbit-config-file))]
-    (read-string (slurp edn-file))))
+    (edn/read-string (slurp edn-file))))
 
 (defn build
   "clean, compile, metajar, and then jib"

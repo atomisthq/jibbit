@@ -16,7 +16,7 @@
 This can be installed as a [named tool][tools-usage].
 
 ```sh
-clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "v0.1.4"}' :as jib
+clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "v0.1.5"}' :as jib
 ```
 
 You can now build clojure projects into containers using `clj -Tjib build`.
