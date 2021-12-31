@@ -16,27 +16,20 @@
 This can be installed as a [named tool][tools-usage].
 
 ```sh
-clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "v0.1.5"}' :as jib
+clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "v0.1.6"}' :as jib
 ```
 
 You can now build clojure projects into containers using `clj -Tjib build`.
 
 ### Create Image
 
-Build jar and package into a container image based on `gcr.io/distroless/java`.
-It is mandatory to specify a `main` namespace.  This
-becomes the entry point for the container image.  Change directory to
-the project containing your `deps.edn` directory and then run the following
-command.
+Build jar and package into a container image based on `gcr.io/distroless/java`.  It is mandatory to specify a `main` namespace.  This becomes the entry point for the container image.  Change directory to the project containing your `deps.edn` directory and then run the following command.
 
 ```sh
 $ clj -Tjib build :config "{:main ${MAIN_NAMESPACE}}"
 ```
 
-This will build the container image to a file named `app.tar`.  You can inspect
-the layers, the `config.json`, and `manifest.json` before pushing the image.
-The base layers will come from `gcr.io/distroless/java` and the two application
-layers will contain the app's deps.edn dependencies and the compiled app jar.
+This will build the container image to a file named `app.tar`.  You can inspect the layers, the `config.json`, and `manifest.json` before pushing the image.  The base layers will come from `gcr.io/distroless/java` and the two application layers will contain the app's deps.edn dependencies and the compiled app jar.
 
 ```sh
 $ tar -tf app.tar
@@ -94,13 +87,11 @@ Since there was no tag specified, this will default to `latest`.
 
 ### Push to a remote registry
 
-None of the configurations below rely on a local docker client.  This means that you can build
-and push from environments that do not have a running docker daemon.
+None of the configurations below rely on a local docker client.  This means that you can build and push from environments that do not have a running docker daemon.
 
 ### Push to GCR
 
-If you have `gcloud` installed, and you have already run `gcloud auth login` to login to your account, then 
-the jib tool will fetch credentials from your current login.
+If you have `gcloud` installed, and you have already run `gcloud auth login` to login to your account, then the jib tool will fetch credentials from your current login.
 
 ```edn
 {:main "my-namespace.core"
@@ -109,19 +100,13 @@ the jib tool will fetch credentials from your current login.
                 :authorizer {:fn jibbit.gcloud/authorizer}}}
 ```
 
-The `authorizer` is a 
-[function](https://github.com/atomisthq/jibbit/blob/main/src/jibbit/gcloud.clj#L6)
-that will use `gcloud auth print-access-token` to create the access token.
+The `authorizer` shown above is a [function](https://github.com/atomisthq/jibbit/blob/main/src/jibbit/gcloud.clj#L6) that will use `gcloud auth print-access-token` to create the access token.
 
-You can reference your own own custom authorizers.  Note that this is running
-as a [named tool][tools-usage], so the deps of your projects are not loaded in
-the current runtime.  You can, however, load namespaces from the root of your
-project (eg from `"."`).
+You can reference your own own custom authorizers.  Note that this is running as a [named tool][tools-usage], so the deps of your projects are not loaded in the current runtime.  You can, however, load namespaces from the root of your project (eg from `"."`).
 
 ### Push to ECR
 
-There are a few ways to authenticate to ECR.  If you have a local aws profile then use the `:profile` type shown below.  This will call the same api
-that would be called by the equivalent `aws ecr get-login-password --region us-west-1 --profile sts`.
+There are a few ways to authenticate to ECR.  If you have a local aws profile then use the `:profile` type shown below.  This will call the same api that would be called by the equivalent `aws ecr get-login-password --region us-west-1 --profile sts`.
 
 ```edn
 {:main "my-namespace.core"
@@ -145,8 +130,7 @@ Your user must have write access to the docker namespace.  You can set credentia
                 :password "<my-docker-personal-access-token>"}}
 ```
 
-However, if you want to check in your configuration and still read the credentials from disk, then extract the credentials using an 
-[authorizer function](https://github.com/atomisthq/jibbit/blob/main/src/jibbit/creds.clj#L14).
+However, if you want to check in your configuration and still read the credentials from disk, then extract the credentials using an [authorizer function](https://github.com/atomisthq/jibbit/blob/main/src/jibbit/creds.clj#L14).
 
 ```edn
 {:main "my-namespace.core"
@@ -174,11 +158,15 @@ In most of the above configurations, we did not include a tag in the in `:image-
                              :args {:local ".creds.edn"}}}}
 ```
 
-However, tags are usually extracted from some other project metadata, like a
-git tag on the HEAD commit.  Add a `:tagger` to the `:target-image` map to
-define the next tag.  The `jibbit.tagger/tag` function will try to use a tag on the
-HEAD commit, or just the HEAD commit `SHA` if there is no tag.  It will throw
-an exception if the current working copy is not clean. 
+You can also pass the tag in on the command line using the `:tag` key.  When you explicitly set a `:tag` on the command line, it will override any tag that is already present in the `:image-name` of the `:target-image` map.
+
+```bash
+clj -Tjib build :tag v1
+```
+
+Tags are often extracted dynamically from some other project metadata, like a git tag on the HEAD commit.  Add a `:tagger` to the `:target-image` map to control how the next tag is extracted.  
+
+An out of the box `jibbit.tagger/tag` function is packaged with this tool.  It will try to use a tag on the HEAD commit, or just the HEAD commit `SHA` if there is no tag.  It will throw an exception if the current working copy is not clean. 
 
 ```edn
 {:main "my-namespace.core"
@@ -189,9 +177,11 @@ an exception if the current working copy is not clean.
                              :args {:local ".creds.edn"}}}}
 ```
 
+Any custom `:tagger` that you define will be over-ridden by a `:tag` key on the command line.  An explicit `:tag` value on the command line always wins.
+
 ## Using other base images
 
-The examples above all built on top of `gcr.io/distroless/java`.  You can also use private images from authenticated registries, or other public images. For example, choose `openjdk:11-slim-buster` as the base image using this configuration.
+The examples above were all built on the `gcr.io/distroless/java` base.  You can also use private images from authenticated registries, or other public base images. For example, choose `openjdk:11-slim-buster` as the base image using this configuration.
 
 ```edn
 {:main "my-namespace.core"
@@ -215,9 +205,7 @@ If you're using an unrecognized base image, your image will default to run as ro
 
 ## org.opencontainers.image LABELS
 
-This tool automatically adds [opencontainer metadata][opencontainers] LABELs to
-the target image. It is a good idea to run jib only when the working
-directory is clean. 
+This tool automatically adds [opencontainer metadata][opencontainers] LABELs to the target image. It is a good idea to run jib only when the working directory is clean. 
 
 ```bash
 if [ -z "$(git status --porcelain)" ]; then

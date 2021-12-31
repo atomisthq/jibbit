@@ -39,13 +39,28 @@
                 (.startsWith (:image-name base-image) "openjdk") "nobody"
                 (= "gcr.io/distroless/java" (:image-name base-image)) "65532")))
 
-(defn add-tags [{:keys [tagger] :as target-image}]
-  (if tagger
+(defn add-tags [{:keys [tagger type tag] :as target-image}]
+  (cond
+    ;; don't add tags when we're building to a tar file
+    (= type :tar) 
+    target-image
+
+    ;; tag name passed in to cli - always use this
+    tag
+    (update target-image :image-name (fn [image-name]
+                                       (let [[_ n _] (re-find #"(.*):(.*)" image-name)]
+                                           (format "%s:%s" (or n image-name) tag))))
+
+    ;; call the custom tagger function
+    tagger
     (update target-image :image-name (fn [image-name]
                                        (require [(symbol (namespace (:fn tagger)))])
                                        (let [tag (eval `(~(:fn tagger) (assoc ~(:args tagger) :image-name ~image-name)))]
                                          (let [[_ n _] (re-find #"(.*):(.*)" image-name)]
                                            (format "%s:%s" (or n image-name) tag)))))
+
+    ;; leave the image-name unchanged - will use latest if there is no tag in the image-name
+    :else
     target-image))
 
 (defn jib-build
@@ -54,7 +69,7 @@
      - app jar layer:  copy target/app.jar into WORKING_DIR
      - try to set a non-root user
      - add org.opencontainer LABEL image metadata from current HEAD commit"
-  [{:keys [git-url base-image target-image project-dir jar-name]
+  [{:keys [git-url base-image target-image project-dir jar-name tag]
     :or {project-dir (.getPath (io/file (System/getenv "PWD")))
          jar-name "app.jar"
          base-image {:image-name "gcr.io/distroless/java"
@@ -89,7 +104,7 @@
         #_(.setProgramArguments (into-list "server-0.1.1-standalone.jar"))
         (set-user (assoc c :base-image base-image))
         (.setEntrypoint (apply into-list ["java" "-Dclojure.main.report=stderr" "-Dfile.encoding=UTF-8" "-jar" jar-name ]))
-        (.containerize (-> (Containerizer/to (-> target-image
+        (.containerize (-> (Containerizer/to (-> (merge target-image (when tag {:tag tag}))
                                                  (add-tags)
                                                  (configure-image {:name "clj-jib-test"})))
                            (.setToolName "clojure jib builder")
@@ -111,11 +126,14 @@
 
 (defn build
   "clean, compile, metajar, and then jib"
-  [{:keys [project-dir config]}]
+  [{:keys [project-dir config tag]}]
   (when project-dir
     (b/set-project-root! project-dir))
   (b/create-basis {:project "deps.edn"})
-  (let [jib-config (or config (load-config (if project-dir (io/file project-dir) (io/file "."))))
+  (let [jib-config (merge 
+                     (or config (load-config (if project-dir (io/file project-dir) (io/file "."))))
+                     (when tag
+                       {:tag tag}))
         class-dir "target/classes"
         meta-lib-dir "target/lib"
         basis (b/create-basis {:project "deps.edn"})]
