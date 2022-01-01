@@ -23,7 +23,8 @@ jobs:
     - name: Build and deploy to Clojars
       uses: yetanalytics/actions/deploy-clojars@v0.0.2
       with:
-          artifact-id: 'atomist/jibbit'
+          artifact-id: 'jibbit'
+          group-id: atomist
           resource-dirs: '[]'
           version: ${{ steps.version.outputs.VERSION }}
           clojars-username: ${{ secrets.CLOJARS_USERNAME }}
