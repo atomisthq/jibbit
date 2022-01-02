@@ -16,7 +16,7 @@
 This can be installed as a [named tool][tools-usage].
 
 ```sh
-clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "v0.1.6"}' :as jib
+clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "v0.1.7"}' :as jib
 ```
 
 You can now build clojure projects into containers using `clj -Tjib build`.
@@ -226,11 +226,21 @@ Labels that are automatically set in each target image are shown below.
 | org.opencontainers.image.source   | set to the remote git url |
 | com.atomist.containers.image.build | jib config used to reproduce this image |
 
+## Controlling packaged dependencies with deps.edn aliases
+
+[Clojure Tools][tools-usage], by default, does not use the projects `:deps` or `:paths`.  However, jibbit does factor in the local projects `:deps` and `:paths` when compiling the jar, and copying dependent jars into the container image.  Users can fully control the basis used for compilation and packaging using aliases.  However, they currently have to be passed in as part of the configuration.  The tool itself will run with its own classpath.
+
+```edn
+{:main "my-namespace.core"
+ :aliases [:prod]}
+```
+
 [gene-kim-gist]: https://gist.github.com/realgenekim/fdcad45286d065cc559cd75a8f946ad4#file-jib-build-clj-L45
 [lein-jib-build]: https://github.com/vehvis/lein-jib-build
 [lein-metajar]: https://github.com/orb/lein-metajar
 [jib]: https://github.com/GoogleContainerTools/jib
 [tools.build]: https://github.com/clojure/tools.build
 [tools-usage]: https://clojure.org/reference/deps_and_cli#_using_named_tools
+[aliased-tool-execution]: https://clojure.org/reference/deps_and_cli#_aliased_tool_execution
 [opencontainers]: https://github.com/opencontainers/image-spec/blob/main/annotations.md
 

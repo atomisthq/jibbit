@@ -136,7 +136,7 @@
                        {:tag tag}))
         class-dir "target/classes"
         meta-lib-dir "target/lib"
-        basis (b/create-basis {:project "deps.edn"})]
+        basis (b/create-basis {:project "deps.edn" :aliases (or (:aliases jib-config) [])})]
     (when (not (:main jib-config)) (throw (ex-info "must specify :main config" {})))
     #_(b/delete {:path class-dir})
     (println "... clojure.tools.build.api/compile-clj")
