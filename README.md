@@ -16,7 +16,7 @@
 This can be installed as a [named tool][tools-usage].
 
 ```sh
-clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "v0.1.7"}' :as jib
+clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "v0.1.8"}' :as jib
 ```
 
 You can now build clojure projects into containers using `clj -Tjib build`.
@@ -226,13 +226,34 @@ Labels that are automatically set in each target image are shown below.
 | org.opencontainers.image.source   | set to the remote git url |
 | com.atomist.containers.image.build | jib config used to reproduce this image |
 
-## Controlling packaged dependencies with deps.edn aliases
+## AOT
 
-[Clojure Tools][tools-usage], by default, does not use the projects `:deps` or `:paths`.  However, jibbit does factor in the local projects `:deps` and `:paths` when compiling the jar, and copying dependent jars into the container image.  Users can fully control the basis used for compilation and packaging using aliases.  However, they currently have to be passed in as part of the configuration.  The tool itself will run with its own classpath.
+Use [tools.build][tools.build] to compile your `.clj` files before packaging them in the container image.  This will obviously slow down the image build but speed up the container runtime.
 
 ```edn
 {:main "my-namespace.core"
- :aliases [:prod]}
+ :aot true}
+```
+
+You can experiment with this on the command line.
+
+```bash
+clj -Tjib build :aot true
+```
+
+## Controlling packaged dependencies with deps.edn aliases
+
+Control the packaged libraries with `:aliases` in your `deps.edn`.  If you need `:extra-deps`, `:classpath-overrides`, `:extra-paths`, or `:jvm-opts` then pass a vector of aliases in the config file.
+
+```edn
+{:main "my-namespace.core"
+ :aliases [:production]}
+```
+
+You can also pass `:aliases` directly on the command line.
+
+```bash
+clj -Tjib build :aliases '[:production]'
 ```
 
 [gene-kim-gist]: https://gist.github.com/realgenekim/fdcad45286d065cc559cd75a8f946ad4#file-jib-build-clj-L45
