@@ -168,7 +168,7 @@
                                                (add-tags)
                                                (configure-image {:name "clj-jib-test"})))
                          (.setToolName "clojure jib builder")
-                         (.setToolVersion "0.1.11")
+                         (.setToolVersion "0.1.12")
                          (.addEventHandler
                           LogEvent
                           (reify Consumer
@@ -179,13 +179,14 @@
 (def default-jibbit-config-file "jib.edn")
 (def class-dir "target/classes")
 
-(defn load-config 
+(defn load-config
   "load jib config from either JIB_CONFIG env variable, or from a jib.edn file in the project-dir"
   [dir]
   (when-let [edn-file (if-let [e (System/getenv "JIB_CONFIG")]
                         (io/file e)
                         (io/file dir default-jibbit-config-file))]
-    (edn/read-string (slurp edn-file))))
+    (when (.exists edn-file)
+      (edn/read-string (slurp edn-file)))))
 
 (defn aot-clj 
   "aot compile and jar the paths and resources - not an uberjar
@@ -207,11 +208,11 @@
 
 (defn build
   "clean, optionally compile/metajar, and then jib"
-  [{:keys [project-dir config] :as params}]
+  [{:keys [project-dir config aliases] :as params}]
   (when project-dir
     (b/set-project-root! project-dir))
-  (let [c (or config (load-config (if project-dir (io/file project-dir) (io/file "."))))
-        basis (b/create-basis {:project "deps.edn" :aliases (or (:aliases c) [])})
+  (let [c (or config (load-config (if project-dir (io/file project-dir) (io/file "."))) {})
+        basis (b/create-basis {:project "deps.edn" :aliases (or aliases (:aliases c) [])})
         jar-name (or (:jar-name c) "app.jar") 
         jib-config (merge
                     c
