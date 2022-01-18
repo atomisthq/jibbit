@@ -1,48 +1,50 @@
 (ns jibbit.core
   (:require [clojure.tools.build.api :as b]
-            [clojure.string]
+            [clojure.string :as str]
             [clojure.java.io :as io]
             [clojure.edn :as edn]
             [clojure.java.shell :as sh]
-            [leiningen.jib-build :refer [configure-image get-path into-list]])
+            [jibbit.build :refer [configure-image get-path]])
   (:import
-   (com.google.cloud.tools.jib.api Jib Containerizer LogEvent)
-   (com.google.cloud.tools.jib.api.buildplan AbsoluteUnixPath  FileEntriesLayer)
-   (java.nio.file Paths)
+   (com.google.cloud.tools.jib.api Jib Containerizer LogEvent JibContainerBuilder)
+   (com.google.cloud.tools.jib.api.buildplan AbsoluteUnixPath FileEntriesLayer FileEntriesLayer$Builder)
+   (java.io File)
+   (java.nio.file Path)
    (java.util.function Consumer)))
 
-(defn libs 
+(defn docker-path [& args]
+  (AbsoluteUnixPath/fromPath (apply get-path args)))
+
+(defn libs
   "Files for each lib in the classpath (often jars for :mvn deps, and dirs for :git libs)"
   [{:keys [classpath]}]
   (->> classpath
        (filter #(-> % val :lib-name))
        (map (comp io/file key))))
 
-(defn manifest-class-path 
+(defn manifest-class-path
   "just the libs (not the source or resource paths) relative to the WORKDIR"
   [basis]
   (->> (libs basis)
        (map #(str "lib/" (.getName %)))
-       (clojure.string/join " ")))
+       (str/join " ")))
 
 (defn paths [{:keys [classpath]}]
   (->> classpath
        (filter #(-> % val :path-key))
-       (map key)
-       (into [])))
+       (mapv (comp b/resolve-path key))))
 
-(defn container-cp 
+(defn container-cp
   "container classpath (suitable for -cp)
    paths are relative to container WORKDIR, 
    libs are copied into WORKDIR/lib"
-  [basis] 
+  [basis]
   (->> (paths basis)
        (concat (->> (libs basis)
                     (map #(str "lib/" (.getName %)))))
-       (interpose ":")
-       (apply str)))
+       (str/join ":")))
 
-(defn set-user [x {:keys [user base-image]}]
+(defn set-user! [x {:keys [user base-image]}]
   (.setUser x (cond
                 ;; user-defined
                 user user
@@ -53,14 +55,14 @@
 (defn add-tags [{:keys [tagger type tag] :as target-image}]
   (cond
     ;; don't add tags when we're building to a tar file
-    (= type :tar) 
+    (= type :tar)
     target-image
 
     ;; tag name passed in to cli - always use this
     tag
     (update target-image :image-name (fn [image-name]
-                                       (let [[_ n _] (re-find #"(.*):(.*)" image-name)]
-                                           (format "%s:%s" (or n image-name) tag))))
+                                       (let [[_ n] (re-find #"(.*):(.*)" image-name)]
+                                         (str (or n image-name) \: tag))))
 
     ;; call the custom tagger function
     tagger
@@ -75,68 +77,48 @@
     target-image))
 
 ;; assumes aot-ed jar is in root of WORKDIR
-(defn entry-point 
+(defn entry-point
   [{:keys [basis aot jar-name main]}]
-  (-> ["java" "-Dclojure.main.report=stderr" "-Dfile.encoding=UTF-8"]
-      (concat
-       (-> basis :classpath-args :jvm-opts))
-      (concat
-       (if aot
-         ["-jar" jar-name]
-         (concat
-          ["-cp" (container-cp basis) "clojure.main"]
-          (if-let [main-opts (-> basis :classpath-args :main-opts)]
-            main-opts
-            ["-m" (pr-str main)]))))))
+  (into ["java" "-Dclojure.main.report=stderr" "-Dfile.encoding=UTF-8"]
+        (concat
+         (-> basis :classpath-args :jvm-opts)
+         (if aot
+           ["-jar" jar-name]
+           (concat
+            ["-cp" (container-cp basis) "clojure.main"]
+            (if-let [main-opts (-> basis :classpath-args :main-opts)]
+              main-opts
+              ["-m" (pr-str main)]))))))
 
-(defn add-file-entries-layer 
+(defn add-file-entries-layer
   "build one layer"
-  [b {layer-name :name build-layer :fn}]
-  (.addFileEntriesLayer
-   b
-   (-> (FileEntriesLayer/builder)
-       (.setName layer-name)
-       ((fn [builder]
-          (build-layer builder)
-          builder))
-       (.build))))
+  [^JibContainerBuilder b {layer-name :name build-layer :fn}]
+  (.addFileEntriesLayer b (.build
+                           (doto (FileEntriesLayer/builder)
+                             (.setName layer-name)
+                             build-layer))))
 
-(defn add-all-layers 
+(defn add-all-layers!
   "add all layers to the jib builder"
-  [b layers]
-  (->> layers
-       (reduce add-file-entries-layer b)))
+  [^JibContainerBuilder b layers]
+  (doseq [l layers]
+    (add-file-entries-layer b l)))
 
-(defn clojure-app-layers 
+(defn clojure-app-layers
   "use basis to create a dependencies and an app layer"
-  [{:keys [aot basis jar-file jar-name]}]
+  [{:keys [aot basis jar-file jar-name working-dir]}]
   [{:name "dependencies layer"
-    :fn (fn [layer-builder]
-          (->> (libs basis)
-               (map #(if (.isDirectory %)
-                       (.addEntryRecursive
-                        layer-builder
-                        (Paths/get (.getPath %) (into-array String []))
-                        (AbsoluteUnixPath/get (format "/lib/%s" (.getName %))))
-                       (.addEntry
-                        layer-builder
-                        (Paths/get (.getPath %) (into-array String []))
-                        (AbsoluteUnixPath/get (format "/lib/%s" (.getName %))))))
-               (doall)))}
+    :fn (fn [^FileEntriesLayer$Builder layer-builder]
+          (doseq [^File f (libs basis)]
+            (if (.isDirectory f)
+              (.addEntryRecursive layer-builder (.toPath f) (docker-path working-dir "lib" (.getName f)))
+              (.addEntry layer-builder (.toPath f) (docker-path working-dir "lib" (.getName f))))))}
    {:name "clojure application layer"
-    :fn (fn [layer-builder]
+    :fn (fn [^FileEntriesLayer$Builder layer-builder]
           (if aot
-            (.addEntry
-             layer-builder
-             (get-path jar-file)
-             (AbsoluteUnixPath/get (format "/%s" jar-name)))
-            (->> (paths basis)
-                 (map get-path)
-                 (map #(.addEntryRecursive
-                        layer-builder
-                        %
-                        (AbsoluteUnixPath/get (format "/%s" (-> % (.toFile) (.getName))))))
-                 (doall))))}])
+            (.addEntry layer-builder (get-path jar-file) (docker-path working-dir jar-name))
+            (doseq [^Path p (map get-path (paths basis))]
+              (.addEntryRecursive layer-builder p (docker-path working-dir (str (.getFileName p)))))))}])
 
 (defn jib-build
   "Containerize using jib
@@ -146,35 +128,40 @@
          else copy source/resource paths too
      - try to set a non-root user
      - add org.opencontainer LABEL image metadata from current HEAD commit"
-  [{:keys [git-url base-image target-image tag debug]
+  [{:keys [git-url base-image target-image working-dir tag debug]
     :or {base-image {:image-name "gcr.io/distroless/java"
                      :type :registry}
          target-image {:image-name "app.tar"
                        :type :tar}
+         working-dir "/"
          git-url (or
                   (b/git-process {:dir b/*project-root* :git-args ["ls-remote" "--get-url"]})
                   (do
                     (println "could not discover git remote")
                     "https://github.com/unknown/unknown"))}
     :as c}]
-  (-> (Jib/from (configure-image base-image {:name "clj-build-test"}))
-      (.addLabel "org.opencontainers.image.revision" (clojure.string/trim (:out (sh/sh "git" "rev-parse" "HEAD"))))
-      (.addLabel "org.opencontainers.image.source" git-url)
-      (.addLabel "com.atomist.containers.image.build" "clj -Tjib build")
-      (add-all-layers (clojure-app-layers c))
-      (set-user (assoc c :base-image base-image))
-      (.setEntrypoint (apply into-list (entry-point c)))
-      (.containerize (-> (Containerizer/to (-> (merge target-image (when tag {:tag tag}))
-                                               (add-tags)
-                                               (configure-image {:name "clj-jib-test"})))
-                         (.setToolName "clojure jib builder")
-                         (.setToolVersion "0.1.12")
-                         (.addEventHandler
-                          LogEvent
-                          (reify Consumer
-                            (accept [this event]
-                              (when (or debug (not (#{"DEBUG" "INFO"} (str (.getLevel event)))))
-                                (printf "jib:%-10s%s\n" (.getLevel event) (.getMessage event))))))))))
+  (.containerize
+   (doto (Jib/from (configure-image base-image))
+     (.addLabel "org.opencontainers.image.revision" (str/trim (:out (sh/sh "git" "rev-parse" "HEAD"))))
+     (.addLabel "org.opencontainers.image.source" git-url)
+     (.addLabel "com.atomist.containers.image.build" "clj -Tjib build")
+     (.setWorkingDirectory (docker-path working-dir))
+     (add-all-layers! (clojure-app-layers (assoc c :working-dir working-dir)))
+     (set-user! (assoc c :base-image base-image))
+     (.setEntrypoint (entry-point c)))
+   (-> (cond-> target-image
+         tag (assoc :tag tag))
+       add-tags
+       configure-image
+       (Containerizer/to)
+       (.setToolName "clojure jib builder")
+       (.setToolVersion "0.1.12")
+       (.addEventHandler
+        LogEvent
+        (reify Consumer
+          (accept [_ event]
+            (when (or debug (not (#{"DEBUG" "INFO"} (str (.getLevel event)))))
+              (printf "jib:%-10s%s\n" (.getLevel event) (.getMessage event)))))))))
 
 (def default-jibbit-config-file "jib.edn")
 (def class-dir "target/classes")
@@ -188,7 +175,7 @@
     (when (.exists edn-file)
       (edn/read-string (slurp edn-file)))))
 
-(defn aot-clj 
+(defn aot-clj
   "aot compile and jar the paths and resources - not an uberjar
     Class-Path manifest references all mvn libs"
   [{:keys [jar-file basis] :as jib-config}]
@@ -213,16 +200,14 @@
     (b/set-project-root! project-dir))
   (let [c (or config (load-config (if project-dir (io/file project-dir) (io/file "."))) {})
         basis (b/create-basis {:project "deps.edn" :aliases (or aliases (:aliases c) [])})
-        jar-name (or (:jar-name c) "app.jar") 
+        jar-name (or (:jar-name c) "app.jar")
         jib-config (merge
                     c
-                    {:jar-file (format "target/%s" jar-name)
+                    {:jar-file (str "target/" jar-name)
                      :jar-name jar-name
                      :basis basis}
                     (dissoc params :config))]
-    (when (and
-            (not (-> basis :classpath-args :main-opts))
-            (not (:main jib-config)))
+    (when-not (or (-> basis :classpath-args :main-opts) (:main jib-config))
       (throw (ex-info "config must specify either :main or an alias with :main-opts" {})))
     (when (:aot jib-config)
       (aot-clj jib-config))

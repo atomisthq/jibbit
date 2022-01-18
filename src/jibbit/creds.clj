@@ -1,7 +1,6 @@
 (ns jibbit.creds
   (:require [clojure.java.io :as io]
-            [clojure.tools.build.api :refer [*project-root*]]
-            ))
+            [clojure.tools.build.api :refer [*project-root*]]))
 
 (defn project-root [local]
   (let [f (io/file *project-root* local)]

@@ -1,7 +1,7 @@
 {:paths ["src"]
  :tools/usage {:ns-default jibbit.core
                :ns-aliases {jib jibbit.core}}
- :deps {io.github.clojure/tools.build {:git/tag "v0.6.8" :git/sha "d79ae84"}
+ :deps {io.github.clojure/tools.build {:git/tag "v0.7.5" :git/sha "2526f58"}
         com.google.cloud.tools/jib-core {:mvn/version "0.20.0"}
-        io.github.slimslenderslacks/lein-jib-build {:git/sha "22ee6219d3f2d81c9e10e0e07175d0cd30084227"}}}
-
+        com.cognitect.aws/api {:mvn/version "0.8.539"}
+        com.cognitect.aws/ecr {:mvn/version "814.2.1053.0"}}}
