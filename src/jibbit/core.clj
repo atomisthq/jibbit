@@ -3,7 +3,6 @@
             [clojure.string :as str]
             [clojure.java.io :as io]
             [clojure.edn :as edn]
-            [clojure.java.shell :as sh]
             [jibbit.build :refer [configure-image get-path]])
   (:import
    (com.google.cloud.tools.jib.api Jib Containerizer LogEvent JibContainerBuilder)
@@ -142,7 +141,7 @@
     :as c}]
   (.containerize
    (doto (Jib/from (configure-image base-image))
-     (.addLabel "org.opencontainers.image.revision" (str/trim (:out (sh/sh "git" "rev-parse" "HEAD"))))
+     (.addLabel "org.opencontainers.image.revision" (b/git-process {:dir b/*project-root* :git-args ["rev-parse" "HEAD"]}))
      (.addLabel "org.opencontainers.image.source" git-url)
      (.addLabel "com.atomist.containers.image.build" "clj -Tjib build")
      (.setWorkingDirectory (docker-path working-dir))
