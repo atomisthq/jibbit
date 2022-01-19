@@ -38,5 +38,5 @@
   (println "Local docker:" image-name)
   (DockerDaemonImage/named (to-imgref image-name)))
 
-(defmethod configure-image :default [{:keys [image-name]}]
-  (throw (Exception. (str "Unknown image type: " image-name))))
+(defmethod configure-image :default [{:keys [type] :as opts}]
+  (throw (ex-info (str "Unknown image type: " type) {:error :unknown-image-type :input opts})))
