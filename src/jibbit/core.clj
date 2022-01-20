@@ -177,6 +177,9 @@
   "aot compile and jar the paths and resources - not an uberjar
     Class-Path manifest references all mvn libs"
   [{:keys [jar-file basis] :as jib-config}]
+  (println "... clojure.tools.build.api/copy-dir")
+  (b/copy-dir {:src-dirs (paths basis)
+               :target-dir class-dir})
   (println "... clojure.tools.build.api/compile-clj")
   (b/compile-clj {:src-dirs (paths basis)
                   :class-dir class-dir
