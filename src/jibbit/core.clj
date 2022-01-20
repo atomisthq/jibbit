@@ -8,7 +8,6 @@
    (com.google.cloud.tools.jib.api Jib Containerizer LogEvent JibContainerBuilder)
    (com.google.cloud.tools.jib.api.buildplan AbsoluteUnixPath FileEntriesLayer FileEntriesLayer$Builder)
    (java.io File)
-   (java.nio.file Path)
    (java.util.function Consumer)))
 
 (defn docker-path [& args]
@@ -31,7 +30,7 @@
 (defn paths [{:keys [classpath]}]
   (->> classpath
        (filter #(-> % val :path-key))
-       (mapv (comp b/resolve-path key))))
+       (mapv key)))
 
 (defn container-cp
   "container classpath (suitable for -cp)
@@ -116,8 +115,8 @@
     :fn (fn [^FileEntriesLayer$Builder layer-builder]
           (if aot
             (.addEntry layer-builder (get-path jar-file) (docker-path working-dir jar-name))
-            (doseq [^Path p (map get-path (paths basis))]
-              (.addEntryRecursive layer-builder p (docker-path working-dir (str (.getFileName p)))))))}])
+            (doseq [p (paths basis)]
+              (.addEntryRecursive layer-builder (get-path (b/resolve-path p)) (docker-path working-dir p)))))}])
 
 (defn jib-build
   "Containerize using jib
