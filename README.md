@@ -112,7 +112,7 @@ There are a few ways to authenticate to ECR.  If you have a local aws profile th
 {:main "my-namespace.core"
  :target-image {:image-name "ACCOUNT.dkr.ecr.REGION.amazonaws.com/REPOSITORY"
                 :type :registry
-                :authorizer {:fn leiningen.aws-ecr-auth/ecr-auth
+                :authorizer {:fn jibbit.aws-ecr/ecr-auth
                              :args {:type :profile
                                     :profile-name "sts"
                                     :region "us-west-1"}}}}
