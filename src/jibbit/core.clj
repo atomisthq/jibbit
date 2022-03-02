@@ -6,6 +6,7 @@
             [jibbit.build :refer [configure-image get-path]])
   (:import
    (com.google.cloud.tools.jib.api Jib Containerizer LogEvent JibContainerBuilder)
+   (com.google.cloud.tools.jib.api.buildplan ImageFormat)
    (com.google.cloud.tools.jib.api.buildplan AbsoluteUnixPath FileEntriesLayer FileEntriesLayer$Builder)
    (java.io File)
    (java.util.function Consumer)))
@@ -144,6 +145,7 @@
      (.addLabel "org.opencontainers.image.source" git-url)
      (.addLabel "com.atomist.containers.image.build" "clj -Tjib build")
      (.setWorkingDirectory (docker-path working-dir))
+     (.setFormat (if (= :oci (:image-format target-image)) ImageFormat/OCI ImageFormat/Docker) )
      (add-all-layers! (clojure-app-layers (assoc c :working-dir working-dir)))
      (set-user! (assoc c :base-image base-image))
      (.setEntrypoint (entry-point c)))
