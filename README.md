@@ -192,6 +192,16 @@ The examples above were all built on the `gcr.io/distroless/java` base.  You can
 
 All of the `:authorizer` configs shown above can be used in the `:base-image` maps.  Add an `:authorizer` if you are building on a base image that is stored in a private registry.
 
+## Building an arm64 image
+
+To build an arm64 image, use an arm64 base image such as [arm64v8/openjdk](https://hub.docker.com/r/arm64v8/openjdk/).
+
+```
+{:main "my-namespace.core"
+ :base-image {:image-name "arm64v8/openjdk:11.0.14.1-jre-bullseye"
+              :type :registry}}
+```
+
 ## Setting a non-root user
 
 By default, this tool tries to set a non-root user when we recognize a base image that comes equipped with a good alternative.  For example, the `openjdk` images have a "nobody" user and the `gcr.io/distroless/java` images have a user with id `65532`.  This can be over-ridden with the `:user` key.  In general, it's a good practice to verify that your images are not required to run as the root user.
