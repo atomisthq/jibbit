@@ -6,7 +6,11 @@
             [jibbit.build :refer [configure-image get-path]])
   (:import
    (com.google.cloud.tools.jib.api Jib Containerizer LogEvent JibContainerBuilder)
-   (com.google.cloud.tools.jib.api.buildplan AbsoluteUnixPath FileEntriesLayer FileEntriesLayer$Builder)
+   (com.google.cloud.tools.jib.api.buildplan ImageFormat)
+   (com.google.cloud.tools.jib.api.buildplan AbsoluteUnixPath 
+                                             FileEntriesLayer 
+                                             OwnershipProvider
+                                             FileEntriesLayer$Builder)
    (java.io File)
    (java.util.function Consumer)))
 
@@ -43,12 +47,25 @@
        (str/join ":")))
 
 (defn set-user! [x {:keys [user base-image]}]
-  (.setUser x (cond
-                ;; user-defined
-                user user
-                ;; gcr.io/distroless/java ships with a nobody user
-                (.startsWith (:image-name base-image) "openjdk") "nobody"
-                (= "gcr.io/distroless/java" (:image-name base-image)) "65532")))
+  (if-let [user (cond
+                  ;; user-defined
+                  user user
+                  ;; gcr.io/distroless/java ships with a nobody user
+                  (.startsWith (:image-name base-image) "openjdk") "65534"
+                  (= "gcr.io/distroless/java" (:image-name base-image)) "65532")]
+    (.setUser x user)
+    x))
+
+(defn user-group-ownership 
+  "root:root is actually smart in general - expecially when the process is running as non-root.  Processes can't alter packaged files.
+   Some dev processes, like skaffold, have workflows where code changes are written directly into running pods - only works if the container user can write these files
+   nobody:root for openjdk:11-slim-buster
+   65532:root for distroless"
+  [{:keys [base-image]}]
+  (cond
+    (and (:image-name base-image) (.startsWith (:image-name base-image) "openjdk")) {:user "65534" :group "0"}
+    (= "gcr.io/distroless/java" (:image-name base-image)) {:user "65532" :group "0"}
+    :else {:user "0" :group "0"}))
 
 (defn add-tags [{:keys [tagger type tag] :as target-image}]
   (cond
@@ -66,9 +83,9 @@
     tagger
     (update target-image :image-name (fn [image-name]
                                        (require [(symbol (namespace (:fn tagger)))])
-                                       (let [tag (eval `(~(:fn tagger) (assoc ~(:args tagger) :image-name ~image-name)))]
-                                         (let [[_ n _] (re-find #"(.*):(.*)" image-name)]
-                                           (format "%s:%s" (or n image-name) tag)))))
+                                       (if-let [s (eval `(~(:fn tagger) (assoc ~(:args tagger) :image-name ~image-name)))]
+                                         s
+                                         (throw (ex-info ":tagger returned nil image name" {:tagger tagger})))))
 
     ;; leave the image-name unchanged - will use latest if there is no tag in the image-name
     :else
@@ -102,21 +119,40 @@
   (doseq [l layers]
     (add-file-entries-layer b l)))
 
+(defn ownership-provider [user group]
+  (reify OwnershipProvider
+    (get [_ source-file path-in-container]
+      (format "%s:%s" user group))))
+
 (defn clojure-app-layers
   "use basis to create a dependencies and an app layer"
-  [{:keys [aot basis jar-file jar-name working-dir]}]
+  [{:keys [aot basis jar-file jar-name working-dir user group]}]
   [{:name "dependencies layer"
     :fn (fn [^FileEntriesLayer$Builder layer-builder]
           (doseq [^File f (libs basis)]
             (if (.isDirectory f)
               (.addEntryRecursive layer-builder (.toPath f) (docker-path working-dir "lib" (.getName f)))
               (.addEntry layer-builder (.toPath f) (docker-path working-dir "lib" (.getName f))))))}
+   ;; this layer supports non-root file ownership so that tools like skaffold can sync clojure source files in dev mode
+   ;; the dependencies layer does not support this - must rebuild an image to swap out a dependency 
    {:name "clojure application layer"
     :fn (fn [^FileEntriesLayer$Builder layer-builder]
           (if aot
-            (.addEntry layer-builder (get-path jar-file) (docker-path working-dir jar-name))
+            (let [path (get-path jar-file)
+                  unix-path (docker-path working-dir jar-name)]
+              (.addEntry layer-builder
+                         path
+                         unix-path
+                         (.get FileEntriesLayer/DEFAULT_FILE_PERMISSIONS_PROVIDER path unix-path)
+                         FileEntriesLayer/DEFAULT_MODIFICATION_TIME
+                         (format "%s:%s" user group)))
             (doseq [p (paths basis)]
-              (.addEntryRecursive layer-builder (get-path (b/resolve-path p)) (docker-path working-dir p)))))}])
+              (.addEntryRecursive layer-builder
+                                  (get-path (b/resolve-path p))
+                                  (docker-path working-dir p)
+                                  FileEntriesLayer/DEFAULT_FILE_PERMISSIONS_PROVIDER
+                                  FileEntriesLayer/DEFAULT_MODIFICATION_TIME_PROVIDER
+                                  (ownership-provider user group)))))}])
 
 (defn jib-build
   "Containerize using jib
@@ -144,7 +180,10 @@
      (.addLabel "org.opencontainers.image.source" git-url)
      (.addLabel "com.atomist.containers.image.build" "clj -Tjib build")
      (.setWorkingDirectory (docker-path working-dir))
-     (add-all-layers! (clojure-app-layers (assoc c :working-dir working-dir)))
+     (.setFormat (if (= :oci (:image-format target-image)) ImageFormat/OCI ImageFormat/Docker) )
+     (add-all-layers! (clojure-app-layers (-> c 
+                                              (assoc :working-dir working-dir)
+                                              (merge (user-group-ownership c)))))
      (set-user! (assoc c :base-image base-image))
      (.setEntrypoint (entry-point c)))
    (-> (cond-> target-image
