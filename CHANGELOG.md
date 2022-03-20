@@ -17,3 +17,10 @@
 - fix missing resources when doing aot
 - fix docker path for nested paths
 - fix error message for unknown registry types
+
+## 0.1.14
+
+### Changed
+- default WORKING_DIR changed to `/home/app` (was previously `/`)
+    - can still change using `:working-dir` parameter to change this
+- update `tools.build` to `v0.8.1`
