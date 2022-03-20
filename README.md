@@ -196,9 +196,9 @@ All of the `:authorizer` configs shown above can be used in the `:base-image` ma
 
 To build an arm64 image, use an arm64 base image such as [arm64v8/openjdk](https://hub.docker.com/r/arm64v8/openjdk/).
 
-```
+```edn
 {:main "my-namespace.core"
- :base-image {:image-name "arm64v8/openjdk:11.0.14.1-jre-bullseye"
+ :base-image {:image-name "arm64v8/openjdk:11.0.14.1-jdk-bullseye"
               :type :registry}}
 ```
 
