@@ -54,7 +54,7 @@ The `:main` key is mandatory. Non-default values of `:base-image` and `:target-i
               :type :registry}
  :target-image {:image-name "gcr.io/my-project/my-repository"
                 :type :registry
-                :authorizer {:fn 'jibbit.gcloud/authorizer}}}
+                :authorizer {:fn jibbit.gcloud/authorizer}}}
 ```
 
 Command substitution will also work if you're using a bourne style shell.
