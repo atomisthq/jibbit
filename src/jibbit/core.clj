@@ -3,7 +3,9 @@
             [clojure.string :as str]
             [clojure.java.io :as io]
             [clojure.edn :as edn]
-            [jibbit.build :refer [configure-image get-path]])
+            [clojure.pprint :refer [pprint]]
+            [jibbit.build :refer [configure-image get-path]]
+            [jibbit.report :as report])
   (:import
    (com.google.cloud.tools.jib.api Jib Containerizer LogEvent JibContainerBuilder)
    (com.google.cloud.tools.jib.api.buildplan ImageFormat)
@@ -14,36 +16,70 @@
    (java.io File)
    (java.util.function Consumer)))
 
-(defn docker-path [& args]
+(defn docker-path 
+  "params
+    path segments (usually starts from working-dir)
+    returns AbsoluteUnixPath (within a Docker image)"
+  [& args]
   (AbsoluteUnixPath/fromPath (apply get-path args)))
 
 (defn libs
-  "Files for each lib in the classpath (often jars for :mvn deps, and dirs for :git libs)"
-  [{:keys [classpath]}]
-  (->> classpath
-       (filter #(-> % val :lib-name))
-       (map (comp io/file key))))
+  "Files for each lib in the classpath (often jars for :mvn deps, and dirs for :git libs)
+    return coll of Files 
+            - could be dirs for :local/root specs or jar files for :mvn/version specs
+            - not checked for existence"
+  ;; classpath entries are path -> map describing where it's from (either a :lib-name or a :path-key)
+  [{:keys [classpath classpath-roots]} working-dir]
+  (->> classpath-roots
+       (filter #(.exists (io/file %))) 
+       (map (fn [p] [p (get classpath p)]))
+       (map (fn [[path {:keys [path-key lib-name] :as lib}]]
+              (let [f (io/file path)]
+                (merge
+                 lib
+                 {:path-string path}
+                 (cond
+                   ;; project path
+                   (and path-key (.isDirectory f))
+                   {:dir? true
+                    :path (get-path path)
+                    :from-working-dir path
+                    :docker-path (docker-path working-dir path)}
+                   ;; lib spec with either :local/root or :git lib
+                   (.isDirectory f)
+                   (let [working-dir-path (format "%s_%s" (str lib-name) (Math/abs (hash path)))]
+                     {:dir? true
+                      :path (get-path path)
+                      :from-working-dir working-dir-path
+                      :docker-path (docker-path working-dir working-dir-path)})
+                   ;; lib spec with a jar file
+                   :else
+                   {:dir? false
+                    :path (get-path path)
+                    :from-working-dir (str "lib/" (.getName f))
+                    :docker-path (docker-path working-dir "lib" (.getName f))})))))))
 
 (defn manifest-class-path
   "just the libs (not the source or resource paths) relative to the WORKDIR"
-  [basis]
-  (->> (libs basis)
-       (map #(str "lib/" (.getName %)))
+  [basis working-dir]
+  (->> (libs basis working-dir)
+       (filter (complement #(and (:dir? %) (:path-key %))))
+       (map :from-working-dir)
        (str/join " ")))
 
-(defn paths [{:keys [classpath]}]
-  (->> classpath
-       (filter #(-> % val :path-key))
-       (mapv key)))
+(defn paths 
+  [basis working-dir]
+  (->> (libs basis working-dir)
+       (filter #(:path-key %))
+       (mapv :docker-path)))
 
 (defn container-cp
   "container classpath (suitable for -cp)
    paths are relative to container WORKDIR, 
    libs are copied into WORKDIR/lib"
-  [basis]
-  (->> (paths basis)
-       (concat (->> (libs basis)
-                    (map #(str "lib/" (.getName %)))))
+  [basis working-dir]
+  (->> (libs basis working-dir)
+       (map :from-working-dir)
        (str/join ":")))
 
 (defn set-user! [x {:keys [user base-image]}]
@@ -93,14 +129,14 @@
 
 ;; assumes aot-ed jar is in root of WORKDIR
 (defn entry-point
-  [{:keys [basis aot jar-name main]}]
+  [{:keys [basis aot jar-name main working-dir]}]
   (into ["java" "-Dclojure.main.report=stderr" "-Dfile.encoding=UTF-8"]
         (concat
          (-> basis :classpath-args :jvm-opts)
          (if aot
            ["-jar" jar-name]
            (concat
-            ["-cp" (container-cp basis) "clojure.main"]
+            ["-cp" (container-cp basis working-dir) "clojure.main"]
             (if-let [main-opts (-> basis :classpath-args :main-opts)]
               main-opts
               ["-m" (pr-str main)]))))))
@@ -129,10 +165,11 @@
   [{:keys [aot basis jar-file jar-name working-dir user group]}]
   [{:name "dependencies layer"
     :fn (fn [^FileEntriesLayer$Builder layer-builder]
-          (doseq [^File f (libs basis)]
-            (if (.isDirectory f)
-              (.addEntryRecursive layer-builder (.toPath f) (docker-path working-dir "lib" (.getName f)))
-              (.addEntry layer-builder (.toPath f) (docker-path working-dir "lib" (.getName f))))))}
+          ;; TODO directories are not unique here
+          (doseq [{:keys [dir? path docker-path]} (libs basis working-dir)]
+            (if dir?
+              (.addEntryRecursive layer-builder path docker-path)
+              (.addEntry layer-builder path docker-path))))}
    ;; this layer supports non-root file ownership so that tools like skaffold can sync clojure source files in dev mode
    ;; the dependencies layer does not support this - must rebuild an image to swap out a dependency 
    {:name "clojure application layer"
@@ -146,10 +183,10 @@
                          (.get FileEntriesLayer/DEFAULT_FILE_PERMISSIONS_PROVIDER path unix-path)
                          FileEntriesLayer/DEFAULT_MODIFICATION_TIME
                          (format "%s:%s" user group)))
-            (doseq [p (paths basis)]
+            (doseq [{:keys [path docker-path]} (paths basis working-dir)]
               (.addEntryRecursive layer-builder
-                                  (get-path (b/resolve-path p))
-                                  (docker-path working-dir p)
+                                  path
+                                  docker-path
                                   FileEntriesLayer/DEFAULT_FILE_PERMISSIONS_PROVIDER
                                   FileEntriesLayer/DEFAULT_MODIFICATION_TIME_PROVIDER
                                   (ownership-provider user group)))))}])
@@ -167,7 +204,6 @@
                      :type :registry}
          target-image {:image-name "app.tar"
                        :type :tar}
-         working-dir "/"
          git-url (or
                   (b/git-process {:dir b/*project-root* :git-args ["ls-remote" "--get-url"]})
                   (do
@@ -215,46 +251,70 @@
 (defn aot-clj
   "aot compile and jar the paths and resources - not an uberjar
     Class-Path manifest references all mvn libs"
-  [{:keys [jar-file basis] :as jib-config}]
+  [{:keys [jar-file basis working-dir] :as jib-config}]
   (println "... clojure.tools.build.api/copy-dir")
-  (b/copy-dir {:src-dirs (paths basis)
+  (b/copy-dir {:src-dirs (->> (libs basis working-dir)
+                              (filter #(:path-key %))
+                              (mapv :path-string))
                :target-dir class-dir})
   (println "... clojure.tools.build.api/compile-clj")
-  (b/compile-clj {:src-dirs (paths basis)
-                  :class-dir class-dir
+  (b/compile-clj {:class-dir class-dir
                   :basis basis})
   (println "... clojure.tools.build.api/jar")
   (b/jar (merge
           {:class-dir class-dir
            :jar-file jar-file
-           :manifest {"Class-Path" (manifest-class-path basis)}}
+           :manifest {"Class-Path" (manifest-class-path basis working-dir)}}
           jib-config)))
 
 (defn clean [_]
   (b/delete {:path class-dir}))
 
-(defn build
-  "clean, optionally compile/metajar, and then jib"
+(defn create-jib-config
+  "create jib-config from tools cli params"
   [{:keys [project-dir config aliases] :as params}]
   (when project-dir
     (b/set-project-root! project-dir))
   (let [c (or config (load-config (if project-dir (io/file project-dir) (io/file "."))) {})
         basis (b/create-basis {:project "deps.edn" :aliases (or aliases (:aliases c) [])})
         jar-name (or (:jar-name c) "app.jar")
+        working-dir (or (:working-dir c) "/home/app")
         jib-config (merge
                     c
                     {:jar-file (str "target/" jar-name)
                      :jar-name jar-name
+                     :working-dir working-dir
                      :basis basis}
                     (dissoc params :config))]
     (when-not (or (-> basis :classpath-args :main-opts) (:main jib-config))
       (throw (ex-info "config must specify either :main or an alias with :main-opts" {})))
+    jib-config))
+
+(defn build
+  "clean, optionally compile/metajar, and then jib"
+  [params]
+  (let [jib-config (create-jib-config params)]
     (when (:aot jib-config)
       (aot-clj jib-config))
     (println "... run jib")
     (jib-build jib-config)))
 
+(defn layers
+  [params]
+  (let [{:keys [basis working-dir jar-file jar-name] :as jib-config} (create-jib-config params)]
+    (report/layer-report 
+      jib-config 
+      (libs basis working-dir)
+      (entry-point jib-config)
+      (manifest-class-path basis working-dir)
+      (get-path jar-file)
+      (docker-path working-dir jar-name))))
+
 (comment
+  (layers {:project-dir "/Users/slim/vonwig/clj-web" :config (edn/read-string (slurp "/Users/slim/vonwig/clj-web/jib-1.edn"))})
+  (layers {:project-dir "/Users/slim/atmhq/admission-controller" :config (edn/read-string (slurp "/Users/slim/atmhq/admission-controller/jib.edn"))})
+  (layers {:project-dir "/Users/slim/repo/clojure-polylith-realworld-example-app/projects/realworld-backend"
+           :config (edn/read-string (slurp "/Users/slim/repo/clojure-polylith-realworld-example-app/projects/realworld-backend/jib.edn")) })
   (clean {})
   (build {:project-dir "/Users/slim/repo/google-cloud"
           :config {:main "main"
