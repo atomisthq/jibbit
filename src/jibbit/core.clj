@@ -165,7 +165,6 @@
   [{:keys [aot basis jar-file jar-name working-dir user group]}]
   [{:name "dependencies layer"
     :fn (fn [^FileEntriesLayer$Builder layer-builder]
-          ;; TODO directories are not unique here
           (doseq [{:keys [dir? path docker-path]} (libs basis working-dir)]
             (if dir?
               (.addEntryRecursive layer-builder path docker-path)
