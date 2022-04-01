@@ -20,6 +20,9 @@
 
 ## 0.1.14
 
+### Added
+- support for [polylith](https://polylith.gitbook.io/polylith/) layout 
+
 ### Changed
 - default WORKING_DIR changed to `/home/app` (was previously `/`)
     - can still change using `:working-dir` parameter to change this
