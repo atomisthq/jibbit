@@ -73,8 +73,7 @@
 (defn paths 
   [basis working-dir]
   (->> (libs basis working-dir)
-       (filter #(:path-key %))
-       (mapv :docker-path)))
+       (filter #(:path-key %))))
 
 (defn container-cp
   "container classpath (suitable for -cp)
@@ -214,10 +213,7 @@
     :as c}]
   (.containerize
    (doto (Jib/from (configure-image base-image))
-     (.addLabel "org.opencontainers.image.revision" (try 
-                                                      (b/git-process {:dir b/*project-root* :git-args ["rev-parse" "HEAD"]}) 
-                                                      (catch Throwable _
-                                                        "none")))
+     (.addLabel "org.opencontainers.image.revision" (or (b/git-process {:dir b/*project-root* :git-args ["rev-parse" "HEAD"]}) "unknown"))
      (.addLabel "org.opencontainers.image.source" git-url)
      (.addLabel "com.atomist.containers.image.build" "clj -Tjib build")
      (.setWorkingDirectory (docker-path working-dir))

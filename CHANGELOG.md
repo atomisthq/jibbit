@@ -27,4 +27,4 @@
 ### Changed
 - default WORKING_DIR changed to `/home/app` (was previously `/`)
     - can still change using `:working-dir` parameter to change this
-- update `tools.build` to `v0.8.1`
+- PENDING: update `tools.build` to `v0.8.1`
