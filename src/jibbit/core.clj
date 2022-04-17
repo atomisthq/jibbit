@@ -203,8 +203,7 @@
   [{:keys [git-url base-image target-image working-dir tag debug]
     :or {base-image {:image-name "gcr.io/distroless/java"
                      :type :registry}
-         target-image {:image-name "app.tar"
-                       :type :tar}
+         target-image {:type :tar}
          git-url (or
                   (b/git-process {:dir b/*project-root* :git-args ["ls-remote" "--get-url"]})
                   (do

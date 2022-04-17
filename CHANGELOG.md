@@ -23,6 +23,7 @@
 ### Added
 - support for [polylith](https://polylith.gitbook.io/polylith/) layout 
 - support envsubst style semantics for [:target-image :image-name]
+- set default value for :tar type if there's no image-name (app.tar)
 
 ### Changed
 - default WORKING_DIR changed to `/home/app` (was previously `/`)
