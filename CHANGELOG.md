@@ -28,4 +28,4 @@
 ### Changed
 - default WORKING_DIR changed to `/home/app` (was previously `/`)
     - can still change using `:working-dir` parameter to change this
-- PENDING: update `tools.build` to `v0.8.1`
+- update `tools.build` to `v0.8.1` (required an excusion of `com.google.guava/guava` - the maven core transitive dep was breaking google jib)
