@@ -54,10 +54,12 @@
                       :docker-path (docker-path working-dir working-dir-path)})
                    ;; lib spec with a jar file
                    :else
-                   {:dir? false
-                    :path (get-path path)
-                    :from-working-dir (str "lib/" (.getName f))
-                    :docker-path (docker-path working-dir "lib" (.getName f))})))))))
+                   (let [working-dir-file (str (some-> lib-name namespace (str "__")) (name lib-name) "_" (.getName f))
+                         working-dir-path (str "lib" File/separator working-dir-file)]
+                     {:dir? false
+                      :path (get-path path)
+                      :from-working-dir working-dir-path
+                      :docker-path (docker-path working-dir working-dir-path)}))))))))
 
 (defn manifest-class-path
   "just the libs (not the source or resource paths) relative to the WORKDIR"
