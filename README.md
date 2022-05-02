@@ -146,6 +146,17 @@ Your `.creds.edn` file should be an edn map with two keys (`:username` and `:pas
 {:username "<my-docker-user>" :password "<my-docker-personall-access-token>"}
 ```
 
+###   Pushing to insecure registries
+
+Jib can ignore HTTPS certificate errors when pushing to a container registry. Setting the key `allow-insecure-registries` to true on the command line will tell jib to ignore these errors, and to attempt HTTP as a last resort. If using a
+[self-signed certificate, the key can be added to your local trust store][self-signed] to avoid having to enable this flag.
+
+```
+clj -Tjib build :allow-insecure-registries true
+```
+
+[self-signed]: https://github.com/GoogleContainerTools/jib/tree/master/docs/self_sign_cert.md
+
 ## Tagging
 
 In most of the above configurations, we did not include a tag in the in `:image-name`.  You can add a tag directly to the config.

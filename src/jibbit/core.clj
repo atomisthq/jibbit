@@ -200,7 +200,7 @@
          else copy source/resource paths too
      - try to set a non-root user
      - add org.opencontainer LABEL image metadata from current HEAD commit"
-  [{:keys [git-url base-image target-image working-dir tag debug]
+  [{:keys [git-url base-image target-image working-dir tag debug allow-insecure-registries]
     :or {base-image {:image-name "gcr.io/distroless/java"
                      :type :registry}
          target-image {:type :tar}
@@ -230,6 +230,7 @@
        (Containerizer/to)
        (.setToolName "clojure jib builder")
        (.setToolVersion "0.1.12")
+       (.setAllowInsecureRegistries (true? allow-insecure-registries))
        (.addEventHandler
         LogEvent
         (reify Consumer
