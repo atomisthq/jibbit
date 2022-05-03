@@ -16,7 +16,7 @@
 This can be installed as a [named tool][tools-usage].
 
 ```sh
-clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "v0.1.13"}' :as jib
+clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "v0.1.14"}' :as jib
 ```
 
 You can now build clojure projects into containers using `clj -Tjib build`.
@@ -275,6 +275,12 @@ You can also pass `:aliases` directly on the command line.
 
 ```bash
 clj -Tjib build :aliases '[:production]'
+```
+
+## Testing
+
+```
+clj -X:test
 ```
 
 [gene-kim-gist]: https://gist.github.com/realgenekim/fdcad45286d065cc559cd75a8f946ad4#file-jib-build-clj-L45

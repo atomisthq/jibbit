@@ -283,7 +283,7 @@
         working-dir (or (:working-dir c) "/home/app")
         jib-config (merge
                     c
-                    {:jar-file (str "target/" jar-name)
+                    {:jar-file (str b/*project-root* "/target/" jar-name)
                      :jar-name jar-name
                      :working-dir working-dir
                      :basis basis}
