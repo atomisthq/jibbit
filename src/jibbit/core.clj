@@ -5,6 +5,7 @@
             [clojure.edn :as edn]
             [clojure.pprint :refer [pprint]]
             [jibbit.build :refer [configure-image get-path]]
+            [jibbit.util :as util]
             [jibbit.report :as report])
   (:import
    (com.google.cloud.tools.jib.api Jib Containerizer LogEvent JibContainerBuilder)
@@ -72,8 +73,7 @@
 (defn paths 
   [basis working-dir]
   (->> (libs basis working-dir)
-       (filter #(:path-key %))
-       (mapv :docker-path)))
+       (filter #(:path-key %))))
 
 (defn container-cp
   "container classpath (suitable for -cp)
@@ -200,11 +200,10 @@
          else copy source/resource paths too
      - try to set a non-root user
      - add org.opencontainer LABEL image metadata from current HEAD commit"
-  [{:keys [git-url base-image target-image working-dir tag debug]
+  [{:keys [git-url base-image target-image working-dir tag debug allow-insecure-registries]
     :or {base-image {:image-name "gcr.io/distroless/java"
                      :type :registry}
-         target-image {:image-name "app.tar"
-                       :type :tar}
+         target-image {:type :tar}
          git-url (or
                   (b/git-process {:dir b/*project-root* :git-args ["ls-remote" "--get-url"]})
                   (do
@@ -213,7 +212,7 @@
     :as c}]
   (.containerize
    (doto (Jib/from (configure-image base-image))
-     (.addLabel "org.opencontainers.image.revision" (b/git-process {:dir b/*project-root* :git-args ["rev-parse" "HEAD"]}))
+     (.addLabel "org.opencontainers.image.revision" (or (b/git-process {:dir b/*project-root* :git-args ["rev-parse" "HEAD"]}) "unknown"))
      (.addLabel "org.opencontainers.image.source" git-url)
      (.addLabel "com.atomist.containers.image.build" "clj -Tjib build")
      (.setWorkingDirectory (docker-path working-dir))
@@ -224,12 +223,14 @@
      (set-user! (assoc c :base-image base-image))
      (.setEntrypoint (entry-point c)))
    (-> (cond-> target-image
-         tag (assoc :tag tag))
+         tag (assoc :tag tag)
+         (:image-name target-image) (update :image-name util/env-subst #(.get (System/getenv) %)))
        add-tags
        configure-image
        (Containerizer/to)
        (.setToolName "clojure jib builder")
        (.setToolVersion "0.1.12")
+       (.setAllowInsecureRegistries (true? allow-insecure-registries))
        (.addEventHandler
         LogEvent
         (reify Consumer
@@ -282,7 +283,7 @@
         working-dir (or (:working-dir c) "/home/app")
         jib-config (merge
                     c
-                    {:jar-file (str "target/" jar-name)
+                    {:jar-file (str b/*project-root* "/target/" jar-name)
                      :jar-name jar-name
                      :working-dir working-dir
                      :basis basis}

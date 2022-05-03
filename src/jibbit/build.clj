@@ -24,7 +24,7 @@
 
 (defmulti configure-image (fn [image-config] (:type image-config)))
 
-(defmethod configure-image :tar [{:keys [image-name]}]
+(defmethod configure-image :tar [{:keys [image-name] :or {image-name "app.tar"}}]
   (println "Tar image:" image-name)
   (-> (TarImage/at (get-path image-name))
       (.named ^String image-name)))

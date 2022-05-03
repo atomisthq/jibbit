@@ -16,7 +16,7 @@
 This can be installed as a [named tool][tools-usage].
 
 ```sh
-clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "v0.1.13"}' :as jib
+clj -Ttools install io.github.atomisthq/jibbit '{:git/tag "v0.1.14"}' :as jib
 ```
 
 You can now build clojure projects into containers using `clj -Tjib build`.
@@ -146,6 +146,17 @@ Your `.creds.edn` file should be an edn map with two keys (`:username` and `:pas
 {:username "<my-docker-user>" :password "<my-docker-personall-access-token>"}
 ```
 
+###   Pushing to insecure registries
+
+Jib can ignore HTTPS certificate errors when pushing to a container registry. Setting the key `allow-insecure-registries` to true on the command line will tell jib to ignore these errors, and to attempt HTTP as a last resort. If using a
+[self-signed certificate, the key can be added to your local trust store][self-signed] to avoid having to enable this flag.
+
+```
+clj -Tjib build :allow-insecure-registries true
+```
+
+[self-signed]: https://github.com/GoogleContainerTools/jib/tree/master/docs/self_sign_cert.md
+
 ## Tagging
 
 In most of the above configurations, we did not include a tag in the in `:image-name`.  You can add a tag directly to the config.
@@ -264,6 +275,12 @@ You can also pass `:aliases` directly on the command line.
 
 ```bash
 clj -Tjib build :aliases '[:production]'
+```
+
+## Testing
+
+```
+clj -X:test
 ```
 
 [gene-kim-gist]: https://gist.github.com/realgenekim/fdcad45286d065cc559cd75a8f946ad4#file-jib-build-clj-L45

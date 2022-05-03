@@ -17,3 +17,18 @@
 - fix missing resources when doing aot
 - fix docker path for nested paths
 - fix error message for unknown registry types
+
+## 0.1.14
+
+### Added
+- support for [polylith](https://polylith.gitbook.io/polylith/) layout 
+- support envsubst style semantics for [:target-image :image-name]
+- set default value for :tar type if there's no image-name (app.tar)
+- add `:allow-insecure-registries` flag to config map, and pass to underlying Jib Containerizer 
+
+### Changed
+- default WORKING_DIR changed to `/home/app` (was previously `/`)
+    - can still change using `:working-dir` parameter to change this
+- update `tools.build` to `v0.8.1` (requires an exclusion of `com.google.guava/guava` - the maven core transitive dep was breaking google jib)
+- support libs with shaded deps (such as xtdb-core)
+
