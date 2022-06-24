@@ -28,38 +28,46 @@
   "Files for each lib in the classpath (often jars for :mvn deps, and dirs for :git libs)
     return coll of Files 
             - could be dirs for :local/root specs or jar files for :mvn/version specs
-            - not checked for existence"
+            - not checked for existence
+  
+   :path-string - classpath-root as it exists in the basis
+   :path-key - path-key? is optional but if present is path-key for the lib
+   :from-working-dir - relative string path
+   :path - Java Path for the Classpath Root (it should exist and represent an absolute path)
+   :docker-path - AbsoluteUnixPath (from jib) of working-dir based path"
   ;; classpath entries are path -> map describing where it's from (either a :lib-name or a :path-key)
   [{:keys [classpath classpath-roots]} working-dir]
   (->> classpath-roots
-       (filter #(.exists (io/file %))) 
-       (map (fn [p] [p (get classpath p)]))
-       (map (fn [[path {:keys [path-key lib-name] :as lib}]]
-              (let [f (io/file path)]
+       (filter #(let [exists? (or (.exists (io/file %)) (.exists (io/file b/*project-root* %)))]
+                  (when (not exists?) (println "warn: " % " does not exist."))
+                  exists?)) ;; TODO are these relative to project-root sometimes? They should exist relative to b/*project-root*
+       (map (fn [classpath-root] [classpath-root (get classpath classpath-root)]))
+       (map (fn [[classpath-root {:keys [path-key lib-name] :as lib}]]
+              ;; classpath-root is a string
+              (let [f (if path-key 
+                        (io/file b/*project-root* classpath-root)
+                        (io/file classpath-root))
+                    dir? (.isDirectory f)]
                 (merge
                  lib
-                 {:path-string path}
+                 {:path-string classpath-root
+                  :path (if path-key (get-path b/*project-root* classpath-root) (get-path classpath-root))
+                  :dir? dir?}
                  (cond
                    ;; project path
-                   (and path-key (.isDirectory f))
-                   {:dir? true
-                    :path (get-path path)
-                    :from-working-dir path
-                    :docker-path (docker-path working-dir path)}
+                   (and path-key dir?)
+                   {:from-working-dir classpath-root
+                    :docker-path (docker-path working-dir classpath-root)}
                    ;; lib spec with either :local/root or :git lib
-                   (.isDirectory f)
-                   (let [working-dir-path (format "%s_%s" (str lib-name) (Math/abs (hash path)))]
-                     {:dir? true
-                      :path (get-path path)
-                      :from-working-dir working-dir-path
+                   dir?
+                   (let [working-dir-path (format "%s_%s" (str lib-name) (Math/abs (hash classpath-root)))]
+                     {:from-working-dir working-dir-path
                       :docker-path (docker-path working-dir working-dir-path)})
                    ;; lib spec with a jar file
                    :else
                    (let [working-dir-file (str (some-> lib-name namespace (str "__")) (name lib-name) "_" (.getName f))
                          working-dir-path (str "lib" File/separator working-dir-file)]
-                     {:dir? false
-                      :path (get-path path)
-                      :from-working-dir working-dir-path
+                     {:from-working-dir working-dir-path
                       :docker-path (docker-path working-dir working-dir-path)}))))))))
 
 (defn manifest-class-path
@@ -71,6 +79,7 @@
        (str/join " ")))
 
 (defn paths 
+  "only include libs that have a path-key"
   [basis working-dir]
   (->> (libs basis working-dir)
        (filter #(:path-key %))))
@@ -167,8 +176,8 @@
   [{:keys [aot basis jar-file jar-name working-dir user group]}]
   [{:name "dependencies layer"
     :fn (fn [^FileEntriesLayer$Builder layer-builder]
-          (doseq [{:keys [dir? path docker-path]} (libs basis working-dir)]
-            (if dir?
+          (doseq [{:keys [dir? path-key path docker-path]} (libs basis working-dir)]
+            (if (and dir? (not path-key))
               (.addEntryRecursive layer-builder path docker-path)
               (.addEntry layer-builder path docker-path))))}
    ;; this layer supports non-root file ownership so that tools like skaffold can sync clojure source files in dev mode
@@ -176,6 +185,7 @@
    {:name "clojure application layer"
     :fn (fn [^FileEntriesLayer$Builder layer-builder]
           (if aot
+            ;; assumes aot-ed jar needs to be in the root of working-dir
             (let [path (get-path jar-file)
                   unix-path (docker-path working-dir jar-name)]
               (.addEntry layer-builder
@@ -184,6 +194,7 @@
                          (.get FileEntriesLayer/DEFAULT_FILE_PERMISSIONS_PROVIDER path unix-path)
                          FileEntriesLayer/DEFAULT_MODIFICATION_TIME
                          (format "%s:%s" user group)))
+            ;; only lib entries with path-keys (either paths or extra-paths)
             (doseq [{:keys [path docker-path]} (paths basis working-dir)]
               (.addEntryRecursive layer-builder
                                   path
@@ -304,6 +315,7 @@
 (defn layers
   [params]
   (let [{:keys [basis working-dir jar-file jar-name] :as jib-config} (create-jib-config params)]
+    (pprint basis)
     (report/layer-report 
       jib-config 
       (libs basis working-dir)

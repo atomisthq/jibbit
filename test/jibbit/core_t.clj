@@ -5,11 +5,10 @@
             [clojure.java.io :as io]
             [clojure.string :as s]
             [clojure.data.json :as json])
-  (:import [org.apache.commons.vfs2 FileSystemManager VFS])
-  )
+  (:import [org.apache.commons.vfs2 FileSystemManager VFS]))
 
-(def sample-project
-  {:deps '{:paths ["src"]
+(defn sample-project [{:keys [paths]}]
+  {:deps `{:paths ~(or paths ["src"])
            :deps {org.clojure/clojure {:mvn/version "1.10.3"}
                   compojure/compojure {:mvn/version "1.6.2"}
                   ring/ring-jetty-adapter {:mvn/version "1.9.4"}
@@ -53,7 +52,7 @@
 (defn layout-sample-project [tmp-dir sample-project]
   (spit (io/file tmp-dir "deps.edn")
         (-> sample-project :deps pr-str))
-  (let [f (io/file tmp-dir (str "src/" (clj-ns-file (:main sample-project))))]
+  (let [f (io/file tmp-dir (str (-> sample-project :deps :paths first) "/" (clj-ns-file (:main sample-project))))]
     (io/make-parents f)
     (spit
      f
@@ -85,6 +84,16 @@
    "-m"
    "\"atomist.web.handler\""])
 
+(def non-standard-source-entry-point
+  ["java"
+   "-Dclojure.main.report=stderr"
+   "-Dfile.encoding=UTF-8"
+   "-cp"
+   "main/src:lib/compojure__compojure_compojure-1.6.2.jar:lib/org.clojure__clojure_clojure-1.10.3.jar:lib/ring__ring-jetty-adapter_ring-jetty-adapter-1.9.4.jar:lib/ring__ring-json_ring-json-0.5.1.jar:lib/clout__clout_clout-2.2.1.jar:lib/medley__medley_medley-1.3.0.jar:lib/org.clojure__tools.macro_tools.macro-0.1.5.jar:lib/org.clojure__core.specs.alpha_core.specs.alpha-0.2.56.jar:lib/org.clojure__spec.alpha_spec.alpha-0.2.194.jar:lib/org.eclipse.jetty__jetty-server_jetty-server-9.4.42.v20210604.jar:lib/ring__ring-core_ring-core-1.9.4.jar:lib/ring__ring-servlet_ring-servlet-1.9.4.jar:lib/cheshire__cheshire_cheshire-5.10.0.jar:lib/instaparse__instaparse_instaparse-1.4.8.jar:lib/javax.servlet__javax.servlet-api_javax.servlet-api-3.1.0.jar:lib/org.eclipse.jetty__jetty-http_jetty-http-9.4.42.v20210604.jar:lib/org.eclipse.jetty__jetty-io_jetty-io-9.4.42.v20210604.jar:lib/commons-fileupload__commons-fileupload_commons-fileupload-1.4.jar:lib/commons-io__commons-io_commons-io-2.10.0.jar:lib/crypto-equality__crypto-equality_crypto-equality-1.0.0.jar:lib/crypto-random__crypto-random_crypto-random-1.2.1.jar:lib/ring__ring-codec_ring-codec-1.1.3.jar:lib/com.fasterxml.jackson.core__jackson-core_jackson-core-2.10.2.jar:lib/com.fasterxml.jackson.dataformat__jackson-dataformat-cbor_jackson-dataformat-cbor-2.10.2.jar:lib/com.fasterxml.jackson.dataformat__jackson-dataformat-smile_jackson-dataformat-smile-2.10.2.jar:lib/tigris__tigris_tigris-0.1.2.jar:lib/org.eclipse.jetty__jetty-util_jetty-util-9.4.42.v20210604.jar:lib/commons-codec__commons-codec_commons-codec-1.15.jar"
+   "clojure.main"
+   "-m"
+   "\"atomist.web.handler\""])
+
 (def aot-entrypoint
   ["java"
    "-Dclojure.main.report=stderr"
@@ -92,23 +101,33 @@
    "-jar"
    "app.jar"])
 
+(t/deftest non-standard-source-project-test
+  (t/testing "packaging a clojure project with non-standard sources"
+    (with-tmp-dir tmp-dir
+      (let [non-standard-project (sample-project {:paths ["main/src"]})]
+        (layout-sample-project tmp-dir non-standard-project)
+        (build {:project-dir tmp-dir
+                :config {:main (:main non-standard-project)
+                         :git-url "https://github.com"
+                         :target-image {:type :tar}}})
+        (t/is (= non-standard-source-entry-point (extract-entry-point (io/file "app.tar"))))))))
+
 (t/deftest deps-edn-test
-  (t/testing "packaging a clojure project without :aot"
-    (with-tmp-dir tmp-dir
-      (layout-sample-project tmp-dir sample-project)
-      (build {:project-dir tmp-dir
-              :config {:main (-> sample-project :main)
-                       :git-url "https://github.com"
-                       :target-image {:type :tar}}})
-      (extract-entry-point (io/file "app.tar"))
-      (t/is (= non-aot-entrypoint (extract-entry-point (io/file "app.tar"))))))
-  (t/testing "packaging a clojure project with :aot"
-    (with-tmp-dir tmp-dir
-      (layout-sample-project tmp-dir sample-project)
-      (build {:project-dir tmp-dir
-              :aot true
-              :config {:main (-> sample-project :main)
-                       :git-url "https://github.com"
-                       :target-image {:type :tar}}})
-      (extract-entry-point (io/file "app.tar"))
-      (t/is (= aot-entrypoint (extract-entry-point (io/file "app.tar")))))))
+  (let [p (sample-project {:paths ["src"]})]
+    (t/testing "packaging a clojure project without :aot"
+      (with-tmp-dir tmp-dir
+        (layout-sample-project tmp-dir p)
+        (build {:project-dir tmp-dir
+                :config {:main (:main p )
+                         :git-url "https://github.com"
+                         :target-image {:type :tar}}})
+        (t/is (= non-aot-entrypoint (extract-entry-point (io/file "app.tar"))))))
+    (t/testing "packaging a clojure project with :aot"
+      (with-tmp-dir tmp-dir
+        (layout-sample-project tmp-dir p)
+        (build {:project-dir tmp-dir
+                :aot true
+                :config {:main (:main p)
+                         :git-url "https://github.com"
+                         :target-image {:type :tar}}})
+        (t/is (= aot-entrypoint (extract-entry-point (io/file "app.tar"))))))))
