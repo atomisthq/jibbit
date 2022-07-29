@@ -49,7 +49,7 @@ The `:config` can also be slurped from a local file named `jib.edn`, or the path
 The `:main` key is mandatory. Non-default values of `:base-image` and `:target-image` can also be specified.
 
 ```edn
-{:main "my-namespace.core"
+{:main my-namespace.core
  :base-image {:image-name "gcr.io/distroless/java"
               :type :registry}
  :target-image {:image-name "gcr.io/my-project/my-repository"
@@ -72,7 +72,7 @@ This does require a local Docker install!  However, it does not use Docker for b
 Use a `jib.edn` where the `:target-image` is of type docker.
 
 ```edn
-{:main "my-namespace.core"
+{:main my-namespace.core
  :target-image {:image-name "namespace/image_name"
                 :type :docker}}
 ```
@@ -94,7 +94,7 @@ None of the configurations below rely on a local docker client.  This means that
 If you have `gcloud` installed, and you have already run `gcloud auth login` to login to your account, then the jib tool will fetch credentials from your current login.
 
 ```edn
-{:main "my-namespace.core"
+{:main my-namespace.core
  :target-image {:image-name "gcr.io/my-project/my-image-name"
                 :type :registry
                 :authorizer {:fn jibbit.gcloud/authorizer}}}
@@ -109,7 +109,7 @@ You can reference your own own custom authorizers.  Note that this is running as
 There are a few ways to authenticate to ECR.  If you have a local aws profile then use the `:profile` type shown below.  This will call the same api that would be called by the equivalent `aws ecr get-login-password --region us-west-1 --profile sts`.
 
 ```edn
-{:main "my-namespace.core"
+{:main my-namespace.core
  :target-image {:image-name "ACCOUNT.dkr.ecr.REGION.amazonaws.com/REPOSITORY"
                 :type :registry
                 :authorizer {:fn jibbit.aws-ecr/ecr-auth
@@ -123,7 +123,7 @@ There are a few ways to authenticate to ECR.  If you have a local aws profile th
 Your user must have write access to the docker namespace.  You can set credentials using `:username` and `:password` keys.
 
 ```edn
-{:main "my-namespace.core"
+{:main my-namespace.core
  :target-image {:image-name "my-namespace/image_name"
                 :type :registry
                 :username "<my-docker-user>"
@@ -133,7 +133,7 @@ Your user must have write access to the docker namespace.  You can set credentia
 However, if you want to check in your configuration and still read the credentials from disk, then extract the credentials using an [authorizer function](https://github.com/atomisthq/jibbit/blob/main/src/jibbit/creds.clj#L14).
 
 ```edn
-{:main "my-namespace.core"
+{:main my-namespace.core
  :target-image {:image-name "my-namespace/image_name"
                 :type :registry
                 :authorizer {:fn jibbit.creds/load-edn
@@ -162,7 +162,7 @@ clj -Tjib build :allow-insecure-registries true
 In most of the above configurations, we did not include a tag in the in `:image-name`.  You can add a tag directly to the config.
 
 ```edn
-{:main "my-namespace.core"
+{:main my-namespace.core
  :target-image {:image-name "my-namespace/image_name:v1"
                 :type :registry
                 :authorizer {:fn jibbit.creds/load-edn
@@ -180,7 +180,7 @@ Tags are often extracted dynamically from some other project metadata, like a gi
 An out of the box `jibbit.tagger/tag` function is packaged with this tool.  It will try to use a tag on the HEAD commit, or just the HEAD commit `SHA` if there is no tag.  It will throw an exception if the current working copy is not clean. 
 
 ```edn
-{:main "my-namespace.core"
+{:main my-namespace.core
  :target-image {:image-name "my-namespace/image_name"
                 :type :registry
                 :tagger {:fn jibbit.tagger/tag}
@@ -195,7 +195,7 @@ Any custom `:tagger` that you define will be over-ridden by a `:tag` key on the 
 The examples above were all built on the `gcr.io/distroless/java` base.  You can also use private images from authenticated registries, or other public base images. For example, choose `openjdk:11-slim-buster` as the base image using this configuration.
 
 ```edn
-{:main "my-namespace.core"
+{:main my-namespace.core
  :user "nobody"
  :base-image {:image-name "openjdk:11-slim-buster"
               :type :registry}}
@@ -208,7 +208,7 @@ All of the `:authorizer` configs shown above can be used in the `:base-image` ma
 To build an arm64 image, use an arm64 base image such as [arm64v8/openjdk](https://hub.docker.com/r/arm64v8/openjdk/).
 
 ```edn
-{:main "my-namespace.core"
+{:main my-namespace.core
  :base-image {:image-name "arm64v8/openjdk:11.0.14.1-jdk-bullseye"
               :type :registry}}
 ```
@@ -220,7 +220,7 @@ By default, this tool tries to set a non-root user when we recognize a base imag
 If you're using an unrecognized base image, your image will default to run as root.  Add a `:user` key if your image supports running as non-root.
 
 ```edn
-{:main "my-namespace.core"
+{:main my-namespace.core
  :user "nobody"}
 ```
 
@@ -252,7 +252,7 @@ Labels that are automatically set in each target image are shown below.
 Use [tools.build][tools.build] to compile your `.clj` files before packaging them in the container image.  This will obviously slow down the image build but speed up the container runtime.
 
 ```edn
-{:main "my-namespace.core"
+{:main my-namespace.core
  :aot true}
 ```
 
@@ -267,7 +267,7 @@ clj -Tjib build :aot true
 Control the packaged libraries with `:aliases` in your `deps.edn`.  If you need `:extra-deps`, `:classpath-overrides`, `:extra-paths`, or `:jvm-opts` then pass a vector of aliases in the config file.
 
 ```edn
-{:main "my-namespace.core"
+{:main my-namespace.core
  :aliases [:production]}
 ```
 
