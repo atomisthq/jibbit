@@ -200,7 +200,7 @@
          else copy source/resource paths too
      - try to set a non-root user
      - add org.opencontainer LABEL image metadata from current HEAD commit"
-  [{:keys [git-url base-image target-image working-dir tag debug allow-insecure-registries]
+  [{:keys [git-url base-image target-image working-dir tag debug allow-insecure-registries env-vars]
     :or {base-image {:image-name "gcr.io/distroless/java"
                      :type :registry}
          target-image {:type :tar}
@@ -208,7 +208,8 @@
                   (b/git-process {:dir b/*project-root* :git-args ["ls-remote" "--get-url"]})
                   (do
                     (println "could not discover git remote")
-                    "https://github.com/unknown/unknown"))}
+                    "https://github.com/unknown/unknown"))
+         env-vars {}}
     :as c}]
   (.containerize
    (doto (Jib/from (configure-image base-image))
@@ -217,6 +218,9 @@
      (.addLabel "com.atomist.containers.image.build" "clj -Tjib build")
      (.setWorkingDirectory (docker-path working-dir))
      (.setFormat (if (= :oci (:image-format target-image)) ImageFormat/OCI ImageFormat/Docker) )
+     (as-> c
+         (doseq [[k v] (seq env-vars)]
+           (.addEnvironmentVariable c (name k) (name v))))
      (add-all-layers! (clojure-app-layers (-> c 
                                               (assoc :working-dir working-dir)
                                               (merge (user-group-ownership c)))))
