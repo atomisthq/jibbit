@@ -217,6 +217,7 @@
      (.addLabel "org.opencontainers.image.source" git-url)
      (.addLabel "com.atomist.containers.image.build" "clj -Tjib build")
      (.setWorkingDirectory (docker-path working-dir))
+     (.setCreationTime (java.time.Instant/now))
      (.setFormat (if (= :oci (:image-format target-image)) ImageFormat/OCI ImageFormat/Docker) )
      (as-> c
          (doseq [[k v] (seq env-vars)]
