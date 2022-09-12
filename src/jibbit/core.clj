@@ -13,6 +13,7 @@
    (com.google.cloud.tools.jib.api.buildplan AbsoluteUnixPath 
                                              FileEntriesLayer 
                                              OwnershipProvider
+                                             Port
                                              FileEntriesLayer$Builder)
    (java.io File)
    (java.util.function Consumer)))
@@ -192,6 +193,16 @@
                                   FileEntriesLayer/DEFAULT_MODIFICATION_TIME_PROVIDER
                                   (ownership-provider user group)))))}])
 
+(defn make-jib-exposed-ports
+  "From util/parse-docker-port maps, make jib.api.buildplan.Port instances"
+  [exposed-ports]
+  (map (fn make-jib-port
+         [p]
+         (let [{:keys [:port :protocol]} (util/parse-docker-port p)]
+           (Port/parseProtocol port (name protocol))))
+       exposed-ports))
+#_ (make-jib-exposed-ports [80 "53/udp"])
+
 (defn jib-build
   "Containerize using jib
      - dependent jar layer:  copy all dependent jars from target/lib into WORKING_DIR/lib
@@ -200,7 +211,7 @@
          else copy source/resource paths too
      - try to set a non-root user
      - add org.opencontainer LABEL image metadata from current HEAD commit"
-  [{:keys [git-url base-image target-image working-dir tag debug allow-insecure-registries env-vars]
+  [{:keys [git-url base-image target-image working-dir tag debug allow-insecure-registries env-vars exposed-ports]
     :or {base-image {:image-name "gcr.io/distroless/java"
                      :type :registry}
          target-image {:type :tar}
@@ -222,7 +233,10 @@
      (as-> c
          (doseq [[k v] (seq env-vars)]
            (.addEnvironmentVariable c (name k) (name v))))
-     (add-all-layers! (clojure-app-layers (-> c 
+     (as-> c
+         (doseq [jib-port (seq (make-jib-exposed-ports exposed-ports))]
+           (.addExposedPort c jib-port)))
+     (add-all-layers! (clojure-app-layers (-> c
                                               (assoc :working-dir working-dir)
                                               (merge (user-group-ownership c)))))
      (set-user! (assoc c :base-image base-image))
@@ -309,8 +323,8 @@
 (defn layers
   [params]
   (let [{:keys [basis working-dir jar-file jar-name] :as jib-config} (create-jib-config params)]
-    (report/layer-report 
-      jib-config 
+    (report/layer-report
+      jib-config
       (libs basis working-dir)
       (entry-point jib-config)
       (manifest-class-path basis working-dir)

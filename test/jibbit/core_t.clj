@@ -5,8 +5,8 @@
             [clojure.java.io :as io]
             [clojure.string :as s]
             [clojure.data.json :as json])
-  (:import [org.apache.commons.vfs2 FileSystemManager VFS])
-  )
+  (:import [org.apache.commons.vfs2 FileSystemManager VFS]))
+
 
 (def sample-project
   {:deps '{:paths ["src"]
@@ -63,7 +63,7 @@
 
 (def file-system-manager (VFS/getManager))
 
-(defn extract-entry-point [f]
+(defn extract-config [f]
   (let [tar-file (.resolveFile file-system-manager (format "tar:%s" (.getAbsolutePath f)))]
     (->> (.getChildren tar-file)
          (filter #(#{"config.json"} (.getBaseName (.getName %))))
@@ -72,8 +72,14 @@
                        (io/reader)
                        (json/read :key-fn keyword)))
          (first)
-         :config
-         :Entrypoint)))
+         :config)))
+
+#_ (extract-config (io/file "app.tar"))
+
+(defn extract-entry-point [f]
+  (:Entrypoint (extract-config f)))
+
+#_ (extract-entry-point (io/file "app.tar"))
 
 (def non-aot-entrypoint
   ["java"
@@ -112,3 +118,15 @@
                        :target-image {:type :tar}}})
       (extract-entry-point (io/file "app.tar"))
       (t/is (= aot-entrypoint (extract-entry-point (io/file "app.tar")))))))
+
+(t/deftest expose-ports-test
+  (t/testing "ports can be exposed with :exposed-ports"
+    (with-tmp-dir tmp-dir
+      (layout-sample-project tmp-dir sample-project)
+      (build {:project-dir tmp-dir
+              :aot true
+              :config {:main (-> sample-project :main)
+                       :git-url "https://github.com"
+                       :exposed-ports [80 "53/udp"]
+                       :target-image {:type :tar}}})
+      (t/is (= {:53/udp {}, :80/tcp {}} (:ExposedPorts (extract-config (io/file "app.tar"))))))))
