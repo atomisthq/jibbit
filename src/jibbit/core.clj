@@ -3,7 +3,6 @@
             [clojure.string :as str]
             [clojure.java.io :as io]
             [clojure.edn :as edn]
-            [clojure.pprint :refer [pprint]]
             [jibbit.build :refer [configure-image get-path]]
             [jibbit.util :as util]
             [jibbit.report :as report])
@@ -135,12 +134,12 @@
   [{:keys [basis aot jar-name main working-dir]}]
   (into ["java" "-Dclojure.main.report=stderr" "-Dfile.encoding=UTF-8"]
         (concat
-         (-> basis :classpath-args :jvm-opts)
+         (-> basis :argmap :jvm-opts)
          (if aot
            ["-jar" jar-name]
            (concat
             ["-cp" (container-cp basis working-dir) "clojure.main"]
-            (if-let [main-opts (-> basis :classpath-args :main-opts)]
+            (if-let [main-opts (-> basis :argmap :main-opts)]
               main-opts
               ["-m" (pr-str main)]))))))
 
@@ -307,7 +306,7 @@
                      :working-dir working-dir
                      :basis basis}
                     (dissoc params :config))]
-    (when-not (or (-> basis :classpath-args :main-opts) (:main jib-config))
+    (when-not (or (-> basis :argmap :main-opts) (:main jib-config))
       (throw (ex-info "config must specify either :main or an alias with :main-opts" {})))
     jib-config))
 
