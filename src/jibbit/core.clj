@@ -202,6 +202,10 @@
        exposed-ports))
 #_ (make-jib-exposed-ports [80 "53/udp"])
 
+(defn with-tags
+  [containerizer tags]
+  (reduce (fn [c t] (.withAdditionalTag c t)) containerizer tags))
+
 (defn jib-build
   "Containerize using jib
      - dependent jar layer:  copy all dependent jars from target/lib into WORKING_DIR/lib
@@ -210,7 +214,7 @@
          else copy source/resource paths too
      - try to set a non-root user
      - add org.opencontainer LABEL image metadata from current HEAD commit"
-  [{:keys [git-url base-image target-image working-dir tag debug allow-insecure-registries env-vars exposed-ports]
+  [{:keys [git-url base-image target-image working-dir tags debug allow-insecure-registries env-vars exposed-ports]
     :or {base-image {:image-name "gcr.io/distroless/java"
                      :type :registry}
          target-image {:type :tar}
@@ -241,11 +245,12 @@
      (set-user! (assoc c :base-image base-image))
      (.setEntrypoint (entry-point c)))
    (-> (cond-> target-image
-         tag (assoc :tag tag)
+         (first tags) (assoc :tag (first tags))
          (:image-name target-image) (update :image-name util/env-subst #(.get (System/getenv) %)))
        add-tags
        configure-image
        (Containerizer/to)
+       (with-tags (next tags))
        (.setToolName "clojure jib builder")
        (.setToolVersion "0.1.12")
        (.setAllowInsecureRegistries (true? allow-insecure-registries))
@@ -299,12 +304,14 @@
         basis (b/create-basis {:project "deps.edn" :aliases (or aliases (:aliases c) [])})
         jar-name (or (:jar-name c) "app.jar")
         working-dir (or (:working-dir c) "/home/app")
+        tags (or (:tags c) (some-> c :tag vector))
         jib-config (merge
-                    c
-                    {:jar-file (str b/*project-root* "/target/" jar-name)
-                     :jar-name jar-name
-                     :working-dir working-dir
-                     :basis basis}
+                     (dissoc c :tag :tags)
+                     (cond-> {:jar-file    (str b/*project-root* "/target/" jar-name)
+                              :jar-name    jar-name
+                              :working-dir working-dir
+                              :basis       basis}
+                       tags (assoc :tags tags))
                     (dissoc params :config))]
     (when-not (or (-> basis :argmap :main-opts) (:main jib-config))
       (throw (ex-info "config must specify either :main or an alias with :main-opts" {})))
