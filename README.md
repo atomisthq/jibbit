@@ -190,6 +190,12 @@ An out of the box `jibbit.tagger/tag` function is packaged with this tool.  It w
 
 Any custom `:tagger` that you define will be over-ridden by a `:tag` key on the command line.  An explicit `:tag` value on the command line always wins.
 
+To tag an image with multiple tags, use the `:tags` key. e.g., 
+
+```edn
+{:tags ["latest" "v1.0.0" "sha-594d24e"]}
+```
+
 ## Using other base images
 
 The examples above were all built on the `gcr.io/distroless/java` base.  You can also use private images from authenticated registries, or other public base images. For example, choose `openjdk:11-slim-buster` as the base image using this configuration.
