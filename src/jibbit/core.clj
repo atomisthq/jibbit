@@ -130,7 +130,7 @@
     target-image))
 
 ;; assumes aot-ed jar is in root of WORKDIR
-(defn entry-point
+(defn default-entry-point
   [{:keys [basis aot jar-name main working-dir]}]
   (into ["java" "-Dclojure.main.report=stderr" "-Dfile.encoding=UTF-8"]
         (concat
@@ -214,7 +214,7 @@
          else copy source/resource paths too
      - try to set a non-root user
      - add org.opencontainer LABEL image metadata from current HEAD commit"
-  [{:keys [git-url base-image target-image working-dir tags debug allow-insecure-registries env-vars exposed-ports]
+  [{:keys [git-url base-image target-image working-dir tags debug allow-insecure-registries env-vars exposed-ports entry-point]
     :or {base-image {:image-name "gcr.io/distroless/java"
                      :type :registry}
          target-image {:type :tar}
@@ -243,7 +243,7 @@
                                               (assoc :working-dir working-dir)
                                               (merge (user-group-ownership c)))))
      (set-user! (assoc c :base-image base-image))
-     (.setEntrypoint (entry-point c)))
+     (.setEntrypoint ((or (util/load-var entry-point) default-entry-point) c)))
    (-> (cond-> target-image
          (first tags) (assoc :tag (first tags))
          (:image-name target-image) (update :image-name util/env-subst #(.get (System/getenv) %)))
@@ -328,14 +328,14 @@
 
 (defn layers
   [params]
-  (let [{:keys [basis working-dir jar-file jar-name] :as jib-config} (create-jib-config params)]
+  (let [{:keys [basis working-dir jar-file jar-name entry-point] :as jib-config} (create-jib-config params)]
     (report/layer-report
-      jib-config
-      (libs basis working-dir)
-      (entry-point jib-config)
-      (manifest-class-path basis working-dir)
-      (get-path jar-file)
-      (docker-path working-dir jar-name))))
+     jib-config
+     (libs basis working-dir)
+     ((or (util/load-var entry-point) default-entry-point) jib-config)
+     (manifest-class-path basis working-dir)
+     (get-path jar-file)
+     (docker-path working-dir jar-name))))
 
 (comment
   (layers {:project-dir "/Users/slim/vonwig/clj-web" :config (edn/read-string (slurp "/Users/slim/vonwig/clj-web/jib-1.edn"))})
