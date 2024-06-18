@@ -40,3 +40,9 @@
       (s/valid? ::parsed-docker-port parsed)
       (throw (ex-info (s/explain-str ::parsed-docker-port parsed) {:pp pp})))
     parsed))
+
+(defn load-var
+  [entry-point]
+  (when-let [sym (some-> entry-point symbol)]
+    (some-> sym namespace symbol require)
+    (resolve sym)))
