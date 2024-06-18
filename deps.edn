@@ -1,10 +1,10 @@
 {:paths ["src"]
  :tools/usage {:ns-default jibbit.core
                :ns-aliases {jib jibbit.core}}
- :deps {io.github.clojure/tools.build {:mvn/version "0.9.4" :exclusions [com.google.guava/guava]}
-        com.google.cloud.tools/jib-core {:mvn/version "0.23.0"}
-        com.cognitect.aws/api {:mvn/version "0.8.656"}
-        com.cognitect.aws/ecr {:mvn/version "821.2.1107.0"}}
+ :deps {io.github.clojure/tools.build {:mvn/version "0.10.3" :exclusions [com.google.guava/guava]}
+        com.google.cloud.tools/jib-core {:mvn/version "0.27.0"}
+        com.cognitect.aws/api {:mvn/version "0.8.692"}
+        com.cognitect.aws/ecr {:mvn/version "857.2.1574.0"}}
  :aliases {:test 
            {:extra-deps {com.magnars/test-with-files {:mvn/version "2021-02-17"}
                          org.apache.commons/commons-vfs2 {:mvn/version "2.9.0"}
